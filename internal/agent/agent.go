@@ -5,19 +5,20 @@ import (
 	"encoding/json"
 
 	"github.com/jarvis-g2o/internal/config"
+	"github.com/jarvis-g2o/pkg/llm"
 	"github.com/jarvis-g2o/pkg/tools"
 	"github.com/sashabaranov/go-openai"
 )
 
 // Agent is the main agent struct
 type Agent struct {
-	llmClient   *openai.Client
+	llmClient   llm.Client
 	cfg         config.LLMConfig
 	toolManager *tools.ToolManager
 }
 
 // New creates a new agent
-func New(llmClient *openai.Client, cfg config.LLMConfig, toolManager *tools.ToolManager) *Agent {
+func New(llmClient llm.Client, cfg config.LLMConfig, toolManager *tools.ToolManager) *Agent {
 	return &Agent{
 		llmClient:   llmClient,
 		cfg:         cfg,

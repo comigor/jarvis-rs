@@ -1,6 +1,6 @@
 # AGENT QUICK-START (≈20 lines)
 
-1. Build: `make build` (creates `bin/jarvis`), run: `make run`.
+1. Requires Go 1.24.4+. Build: `make build` (creates `bin/jarvis`), run: `make run`.
 2. Full test suite: `go test ./...`  ‑ use `go test -run ^TestName$ ./path/...` for a single test.
 3. Lint/format: `go vet ./...`, `go fmt ./...`; prefer `golangci-lint run` if installed.
 4. Dependency tidy: `go mod tidy && go mod vendor`.

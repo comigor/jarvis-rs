@@ -1,0 +1,44 @@
+# Jarvis G2O
+
+Smart-home agent server built in Go 1.24.4.
+
+## Quick start
+```bash
+# build binary
+make build
+# run API on :8080
+make run
+```
+
+POST plain-text prompts to `/`:
+```bash
+curl -X POST --data 'Turn on kitchen light' http://localhost:8080/
+```
+Debug individual tools:
+```bash
+curl -X POST http://localhost:8080/debug/tool \
+  -H 'Content-Type: application/json' \
+  -d '{"tool":"home_assistant_list"}'
+```
+
+## Tests & lint
+```bash
+go test ./...          # all tests
+go test ./... -run Foo # single test
+make vet               # go vet lint (alias)
+```
+
+## Configuration
+Create `config.yaml`:
+```yaml
+server:
+  host: 0.0.0.0
+  port: "8080"
+llm:
+  base_url: https://api.openai.com/v1
+  api_key: YOUR_KEY
+  model: gpt-4o-mini
+home_assistant:
+  url: http://hass.local:8123
+  token: LONG_LIVED_TOKEN
+```
