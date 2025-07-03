@@ -11,7 +11,6 @@ import (
 	"github.com/jarvis-g2o/internal/agent"
 	"github.com/jarvis-g2o/internal/config"
 	"github.com/jarvis-g2o/pkg/llm"
-	// "github.com/jarvis-g2o/pkg/tools" // Removed
 	"go.uber.org/zap"
 )
 
@@ -33,11 +32,8 @@ func main() {
 	// Initialize LLM client
 	llmClient := llm.NewClient(cfg.LLM)
 
-	// ToolManager and tool registration removed.
-
-	// Initialize agent
-	// The New function for agent now expects the full cfg object
-	agent := agent.New(llmClient, *cfg)
+	// Initialize agent (ToolManager removed)
+	agent := agent.New(llmClient, *cfg) // cfg is now *config.Config
 
 	// Initialize router
 	r := chi.NewRouter()
@@ -62,7 +58,7 @@ func main() {
 		w.Write([]byte(response))
 	})
 
-	// Debug tool endpoint removed.
+	// debug tool endpoint removed
 
 	// Start server
 	serverAddr := fmt.Sprintf("%s:%s", cfg.Server.Host, cfg.Server.Port)

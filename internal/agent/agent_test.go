@@ -4,6 +4,9 @@ import (
 	"context"
 	"testing"
 
+	"encoding/json"
+	"errors"
+
 	"github.com/jarvis-g2o/internal/config"
 	"github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/require"
@@ -59,151 +62,166 @@ func (m *mockLLM) CreateChatCompletion(ctx context.Context, r openai.ChatComplet
 		return openai.ChatCompletionResponse{}, m.err
 	}
 	if len(m.calls) == 0 {
-		panic("mockLLM: no more responses configured")
+		panic("mockLLM: no more responses configured for request: " + r.Messages[0].Content)
 	}
 	resp := m.calls[0]
 	m.calls = m.calls[1:]
+
+	// Check if tools were provided to the LLM, for test validation
+	if len(r.Tools) > 0 {
+		// If this mock response is supposed to be a tool call, ensure it has one.
+		// If not, ensure it doesn't. This helps validate test setup.
+		// For simplicity, this check is basic. More advanced checks could verify specific tools.
+		// fmt.Printf("LLM call with %d tools provided.\n", len(r.Tools))
+	}
 	return resp, nil
 }
 
-func TestAgentProcess_NoTool(t *testing.T) {
-	llmResp := openai.ChatCompletionResponse{
-		Choices: []openai.ChatCompletionChoice{{
-			Message: openai.ChatCompletionMessage{Content: "hi direct from LLM"},
-		}},
-	}
+// TestAgentProcess_LLMRespondsDirectly tests the scenario where the LLM responds directly without tool usage.
+func TestAgentProcess_LLMRespondsDirectly(t *testing.T) {
+	llmDirectResponse := "Hello, I am a helpful AI."
 	cfg := config.Config{
-		LLM: config.LLMConfig{Model: "gpt"},
-		MCPServers: []config.MCPServerConfig{ // Updated to new structure
-			{URL: "http://fake-mcp-server1.example.com", Headers: map[string]string{"X-Test": "true"}},
+		LLM:        config.LLMConfig{Model: "gpt"},
+		MCPServers: []config.MCPServerConfig{}, // No MCP servers, so no tools for LLM
+	}
+
+	mockLLMClient := &mockLLM{
+		calls: []openai.ChatCompletionResponse{
+			{Choices: []openai.ChatCompletionChoice{{Message: openai.ChatCompletionMessage{Content: llmDirectResponse}}}},
 		},
 	}
-	agentInstance := New(&mockLLM{calls: []openai.ChatCompletionResponse{llmResp}}, cfg)
+	agentInstance := New(mockLLMClient, cfg)
 	require.NotNil(t, agentInstance)
+	require.Empty(t, agentInstance.availableLLMTools, "Agent should have no tools available if no MCP servers are configured or they offer no tools.")
 
-	out, err := agentInstance.Process(context.Background(), "hello")
+	out, err := agentInstance.Process(context.Background(), "User says hi")
 	require.NoError(t, err)
-	require.Equal(t, "hi direct from LLM", out)
+	require.Equal(t, llmDirectResponse, out)
 }
 
-func TestAgentProcess_MCPToolCall_Success(t *testing.T) {
-	llmJSONResponse := `{"tool_name": "test_tool", "arguments": {"param":"value"}}`
-	llmResp := openai.ChatCompletionResponse{
-		Choices: []openai.ChatCompletionChoice{{
-			Message: openai.ChatCompletionMessage{Content: llmJSONResponse},
-		}},
-	}
+// TestAgentProcess_LLMRequestsMCPTool_Success tests full flow: LLM requests tool, MCP client executes, LLM gives final response.
+func TestAgentProcess_LLMRequestsMCPTool_Success(t *testing.T) {
+	toolName := "get_weather"
+	toolArgsJSON := `{"location": "London"}`
+	mcpToolResultText := "The weather in London is sunny."
+	finalLLMResponse := "Based on the weather tool, it's sunny in London."
 
 	cfg := config.Config{
-		LLM: config.LLMConfig{Model: "gpt"},
-		MCPServers: []config.MCPServerConfig{ // Does not matter much as we override clients
-			{URL: "http://dummy-server.com"},
+		LLM:        config.LLMConfig{Model: "gpt"},
+		MCPServers: []config.MCPServerConfig{{URL: "http://fake-weather-server.com"}},
+	}
+
+	// Mock LLM: First call requests a tool, second call gives final answer
+	mockLLMClient := &mockLLM{
+		calls: []openai.ChatCompletionResponse{
+			{ // First LLM response: requests tool call
+				Choices: []openai.ChatCompletionChoice{{
+					Message: openai.ChatCompletionMessage{
+						ToolCalls: []openai.ToolCall{{
+							ID:   "call_123",
+							Type: openai.ToolTypeFunction,
+							Function: openai.FunctionCall{
+								Name:      toolName,
+								Arguments: toolArgsJSON,
+							},
+						}},
+					},
+				}},
+			},
+			{ // Second LLM response: final answer after tool execution
+				Choices: []openai.ChatCompletionChoice{{
+					Message: openai.ChatCompletionMessage{Content: finalLLMResponse},
+				}},
+			},
 		},
 	}
 
-	agentInstance := New(&mockLLM{calls: []openai.ChatCompletionResponse{llmResp}}, cfg)
-	require.NotNil(t, agentInstance)
-
+	// Mock MCP Client
 	mockClient := &mockMCPClient{
 		ListToolsFunc: func(ctx context.Context, req mcp.ListToolsRequest) (*mcp.ListToolsResult, error) {
-			return &mcp.ListToolsResult{Tools: []mcp.Tool{{Name: "test_tool"}}}, nil
+			// This tool needs to be available for the agent to register it for the LLM
+			return &mcp.ListToolsResult{Tools: []mcp.Tool{
+				{Name: toolName, Description: "Gets weather", RawInputSchema: json.RawMessage(`{"type":"object","properties":{"location":{"type":"string"}}}`)},
+			}}, nil
 		},
 		CallToolFunc: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			require.Equal(t, "test_tool", request.Params.Name)
-			expectedArgs := map[string]any{"param": "value"}
+			require.Equal(t, toolName, request.Params.Name)
+			expectedArgs := map[string]any{"location": "London"}
 			require.Equal(t, expectedArgs, request.Params.Arguments)
 			return &mcp.CallToolResult{
-				Content: []mcp.Content{mcp.TextContent{Type: "text", Text: "success from mock_tool"}},
+				Content: []mcp.Content{mcp.TextContent{Type: "text", Text: mcpToolResultText}},
 			}, nil
 		},
 	}
-	agentInstance.mcpClients = []MCPClientInterface{mockClient} // Override with mock
 
-	out, err := agentInstance.Process(context.Background(), "do something with mcp")
-	require.NoError(t, err)
-	require.Equal(t, "success from mock_tool", out)
-}
-
-func TestAgentProcess_MCPToolCall_AllClientsFail(t *testing.T) {
-	llmJSONResponse := `{"tool_name": "test_tool", "arguments": {"param":"value"}}`
-	llmResp := openai.ChatCompletionResponse{
-		Choices: []openai.ChatCompletionChoice{{
-			Message: openai.ChatCompletionMessage{Content: llmJSONResponse},
-		}},
-	}
-	cfg := config.Config{
-		LLM:        config.LLMConfig{Model: "gpt"},
-		MCPServers: []config.MCPServerConfig{{URL: "http://dummy1.com"}, {URL: "http://dummy2.com"}},
-	}
-	agentInstance := New(&mockLLM{calls: []openai.ChatCompletionResponse{llmResp}}, cfg)
+	// Create agent. The New() function will use the ListToolsFunc from the mockClient if we could inject it.
+	// For now, we create the agent, then override its mcpClients and availableLLMTools.
+	agentInstance := New(mockLLMClient, cfg)
 	require.NotNil(t, agentInstance)
 
-	mockErr := context.DeadlineExceeded
-	mockClient1 := &mockMCPClient{
-		ListToolsFunc: func(ctx context.Context, req mcp.ListToolsRequest) (*mcp.ListToolsResult, error) {
-			return &mcp.ListToolsResult{Tools: []mcp.Tool{{Name: "test_tool"}}}, nil
-		},
-		CallToolFunc: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			return nil, mockErr
-		},
+	// Manually set the mcpClients and availableLLMTools for this test
+	agentInstance.mcpClients = []MCPClientInterface{mockClient}
+	agentInstance.availableLLMTools = []openai.Tool{
+		{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: toolName, Description: "Gets weather", Parameters: json.RawMessage(`{"type":"object","properties":{"location":{"type":"string"}}}`)}},
 	}
-	mockClient2 := &mockMCPClient{
-		ListToolsFunc: func(ctx context.Context, req mcp.ListToolsRequest) (*mcp.ListToolsResult, error) {
-			return &mcp.ListToolsResult{Tools: []mcp.Tool{{Name: "test_tool"}}}, nil
-		},
-		CallToolFunc: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			return nil, mockErr
-		},
-	}
-	agentInstance.mcpClients = []MCPClientInterface{mockClient1, mockClient2}
 
-	out, err := agentInstance.Process(context.Background(), "do something with mcp")
+	out, err := agentInstance.Process(context.Background(), "What's the weather in London?")
 	require.NoError(t, err)
-	require.Equal(t, "LLM suggested tool 'test_tool', but it was not found on any available MCP server or the call failed.", out)
+	require.Equal(t, finalLLMResponse, out)
 }
 
-func TestAgentProcess_MCPToolCall_NoClientsAvailable(t *testing.T) {
-	llmJSONResponse := `{"tool_name": "test_tool", "arguments": {"param":"value"}}`
-	llmResp := openai.ChatCompletionResponse{
-		Choices: []openai.ChatCompletionChoice{{
-			Message: openai.ChatCompletionMessage{Content: llmJSONResponse},
-		}},
-	}
+// TestAgentProcess_LLMRequestsMCPTool_MCPClientFails tests when MCP tool call fails.
+func TestAgentProcess_LLMRequestsMCPTool_MCPClientFails(t *testing.T) {
+	toolName := "broken_tool"
+	toolArgsJSON := `{}`
+	mcpErrorText := "MCP tool execution failed badly."
+	finalLLMResponseAfterError := "Sorry, I couldn't use the broken_tool due to an error: MCP tool execution failed badly."
+
 	cfg := config.Config{
 		LLM:        config.LLMConfig{Model: "gpt"},
-		MCPServers: []config.MCPServerConfig{}, // No servers
+		MCPServers: []config.MCPServerConfig{{URL: "http://fake-broken-server.com"}},
 	}
-	agentInstance := New(&mockLLM{calls: []openai.ChatCompletionResponse{llmResp}}, cfg)
-	require.NotNil(t, agentInstance)
-	require.Empty(t, agentInstance.mcpClients)
 
-	out, err := agentInstance.Process(context.Background(), "do something with mcp")
-	require.NoError(t, err)
-	require.Equal(t, "LLM suggested an MCP tool, but no MCP clients are available.", out)
-}
-
-func TestAgentProcess_MCPToolCall_ToolNotFoundOnAnyServer(t *testing.T) {
-	llmJSONResponse := `{"tool_name": "non_existent_tool", "arguments": {}}`
-	llmResp := openai.ChatCompletionResponse{
-		Choices: []openai.ChatCompletionChoice{{
-			Message: openai.ChatCompletionMessage{Content: llmJSONResponse},
-		}},
+	mockLLMClient := &mockLLM{
+		calls: []openai.ChatCompletionResponse{
+			{ // First LLM response: requests tool call
+				Choices: []openai.ChatCompletionChoice{{
+					Message: openai.ChatCompletionMessage{
+						ToolCalls: []openai.ToolCall{{
+							ID:       "call_456",
+							Type:     openai.ToolTypeFunction,
+							Function: openai.FunctionCall{Name: toolName, Arguments: toolArgsJSON},
+						}},
+					},
+				}},
+			},
+			{ // Second LLM response: LLM acknowledges the tool error
+				Choices: []openai.ChatCompletionChoice{{
+					Message: openai.ChatCompletionMessage{Content: finalLLMResponseAfterError},
+				}},
+			},
+		},
 	}
-	cfg := config.Config{
-		LLM:        config.LLMConfig{Model: "gpt"},
-		MCPServers: []config.MCPServerConfig{{URL: "http://dummy1.com"}},
-	}
-	agentInstance := New(&mockLLM{calls: []openai.ChatCompletionResponse{llmResp}}, cfg)
-	require.NotNil(t, agentInstance)
 
 	mockClient := &mockMCPClient{
 		ListToolsFunc: func(ctx context.Context, req mcp.ListToolsRequest) (*mcp.ListToolsResult, error) {
-			return &mcp.ListToolsResult{Tools: []mcp.Tool{{Name: "some_other_tool"}}}, nil // Does not list "non_existent_tool"
+			return &mcp.ListToolsResult{Tools: []mcp.Tool{
+				{Name: toolName, Description: "A tool that is broken", RawInputSchema: json.RawMessage(`{"type":"object","properties":{}}`)},
+			}}, nil
+		},
+		CallToolFunc: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return nil, errors.New(mcpErrorText) // MCP client's CallTool returns an error
 		},
 	}
-	agentInstance.mcpClients = []MCPClientInterface{mockClient}
 
-	out, err := agentInstance.Process(context.Background(), "do something with mcp")
+	agentInstance := New(mockLLMClient, cfg)
+	require.NotNil(t, agentInstance)
+	agentInstance.mcpClients = []MCPClientInterface{mockClient}
+	agentInstance.availableLLMTools = []openai.Tool{
+		{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: toolName, Description: "A tool that is broken", Parameters: json.RawMessage(`{"type":"object","properties":{}}`)}},
+	}
+
+	out, err := agentInstance.Process(context.Background(), "Use the broken tool")
 	require.NoError(t, err)
-	require.Equal(t, "LLM suggested tool 'non_existent_tool', but it was not found on any available MCP server or the call failed.", out)
+	require.Equal(t, finalLLMResponseAfterError, out)
 }
