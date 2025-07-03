@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -12,7 +11,7 @@ import (
 	"github.com/jarvis-g2o/internal/agent"
 	"github.com/jarvis-g2o/internal/config"
 	"github.com/jarvis-g2o/pkg/llm"
-	"github.com/jarvis-g2o/pkg/tools"
+	// "github.com/jarvis-g2o/pkg/tools" // Removed
 	"go.uber.org/zap"
 )
 
@@ -34,14 +33,11 @@ func main() {
 	// Initialize LLM client
 	llmClient := llm.NewClient(cfg.LLM)
 
-	// Initialize ToolManager
-	toolManager := tools.NewToolManager()
-	toolManager.RegisterTool(tools.NewHomeAssistantTool(cfg.HomeAssistant))
-	toolManager.RegisterTool(&tools.GoogleCalendarTool{})
-	toolManager.RegisterTool(tools.NewHomeAssistantListTool(cfg.HomeAssistant))
+	// ToolManager and tool registration removed.
 
 	// Initialize agent
-	agent := agent.New(llmClient, cfg.LLM, toolManager)
+	// The New function for agent now expects the full cfg object
+	agent := agent.New(llmClient, *cfg)
 
 	// Initialize router
 	r := chi.NewRouter()
@@ -66,34 +62,8 @@ func main() {
 		w.Write([]byte(response))
 	})
 
-	// debug tool endpoint
-	r.Post("/debug/tool", func(w http.ResponseWriter, r *http.Request) {
-		var req struct {
-			Tool string `json:"tool"`
-			Args string `json:"args"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			sugar.Errorw("decode error", "err", err)
-			http.Error(w, "bad json", http.StatusBadRequest)
-			return
-		}
+	// Debug tool endpoint removed.
 
-		t, err := toolManager.GetTool(req.Tool)
-		if err != nil {
-			sugar.Errorw("tool lookup", "tool", req.Tool, "err", err)
-			http.Error(w, "tool not found", http.StatusBadRequest)
-			return
-		}
-
-		res, err := t.Run(req.Args)
-		if err != nil {
-			sugar.Errorw("tool run", "tool", req.Tool, "err", err)
-			http.Error(w, "tool error", http.StatusInternalServerError)
-			return
-		}
-
-		w.Write([]byte(res))
-	})
 	// Start server
 	serverAddr := fmt.Sprintf("%s:%s", cfg.Server.Host, cfg.Server.Port)
 	sugar.Infof("starting server on %s", serverAddr)

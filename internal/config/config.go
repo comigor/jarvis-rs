@@ -1,4 +1,3 @@
-
 package config
 
 import (
@@ -7,10 +6,9 @@ import (
 
 // Config holds the application configuration
 type Config struct {
-	LLM             LLMConfig
-	Server          ServerConfig
-	HomeAssistant   HomeAssistantConfig   `mapstructure:"home_assistant"`
-	GoogleCalendar  GoogleCalendarConfig  `mapstructure:"google_calendar"`
+	LLM        LLMConfig
+	Server     ServerConfig
+	MCPServers []string `mapstructure:"mcp_servers"`
 }
 
 // LLMConfig holds the LLM configuration
@@ -25,17 +23,6 @@ type LLMConfig struct {
 type ServerConfig struct {
 	Host string `mapstructure:"host"`
 	Port string `mapstructure:"port"`
-}
-
-// HomeAssistantConfig holds the Home Assistant configuration
-type HomeAssistantConfig struct {
-	URL   string `mapstructure:"url"`
-	Token string `mapstructure:"token"`
-}
-
-// GoogleCalendarConfig holds the Google Calendar configuration
-type GoogleCalendarConfig struct {
-	CredentialsJSON string `mapstructure:"credentials_json"`
 }
 
 // Load loads the configuration from the config.yaml file

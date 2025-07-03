@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/jarvis-g2o/internal/config"
-	"github.com/jarvis-g2o/pkg/tools"
+	// "github.com/jarvis-g2o/pkg/tools" // Removed
 	"github.com/sashabaranov/go-openai"
 )
 
@@ -23,13 +23,7 @@ func (m *mockLLM) CreateChatCompletion(ctx context.Context, r openai.ChatComplet
 	return resp, nil
 }
 
-type mockTool struct{}
-
-func (t *mockTool) Name() string        { return "mock_tool" }
-func (t *mockTool) Description() string { return "mock" }
-func (t *mockTool) Run(args string) (string, error) {
-	return "tool-result", nil
-}
+// mockTool removed
 
 func TestAgentProcess_NoTool(t *testing.T) {
 	llmResp := openai.ChatCompletionResponse{
@@ -37,7 +31,11 @@ func TestAgentProcess_NoTool(t *testing.T) {
 			Message: openai.ChatCompletionMessage{Content: "hi"},
 		}},
 	}
-	a := New(&mockLLM{calls: []openai.ChatCompletionResponse{llmResp}}, config.LLMConfig{Model: "gpt"}, tools.NewToolManager())
+	cfg := config.Config{
+		LLM:        config.LLMConfig{Model: "gpt"},
+		MCPServers: []string{"http://fake-mcp-server.example.com"}, // Add a dummy MCP server
+	}
+	a := New(&mockLLM{calls: []openai.ChatCompletionResponse{llmResp}}, cfg)
 
 	out, err := a.Process(context.Background(), "hello")
 	if err != nil {
@@ -48,31 +46,5 @@ func TestAgentProcess_NoTool(t *testing.T) {
 	}
 }
 
-func TestAgentProcess_WithTool(t *testing.T) {
-	tm := tools.NewToolManager()
-	tm.RegisterTool(&mockTool{})
-
-	first := openai.ChatCompletionResponse{Choices: []openai.ChatCompletionChoice{{
-		Message: openai.ChatCompletionMessage{
-			ToolCalls: []openai.ToolCall{{
-				ID:   "1",
-				Type: openai.ToolTypeFunction,
-				Function: openai.FunctionCall{
-					Name:      "mock_tool",
-					Arguments: "{}",
-				},
-			}},
-		}}}}
-	second := openai.ChatCompletionResponse{Choices: []openai.ChatCompletionChoice{{
-		Message: openai.ChatCompletionMessage{Content: "done"},
-	}}}
-	a := New(&mockLLM{calls: []openai.ChatCompletionResponse{first, second}}, config.LLMConfig{Model: "gpt"}, tm)
-
-	out, err := a.Process(context.Background(), "do")
-	if err != nil {
-		t.Fatalf("err %v", err)
-	}
-	if out != "done" {
-		t.Fatalf("want done got %s", out)
-	}
-}
+// TestAgentProcess_WithTool removed as tool functionality is removed.
+// Future tests should cover MCP interactions.
