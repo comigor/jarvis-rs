@@ -202,7 +202,13 @@ func (a *Agent) Process(ctx context.Context, request string) (string, error) {
 	//   - On LLMRespondedWithContent -> StateDone
 	//   - On ErrorOccurred -> StateError
 	fsm.Configure(StateReadyToCallLLM).
+		PermitReentry(TriggerProcessInput). // Added to ensure OnEntry is called by the initial Fire
 		OnEntry(func(ctx context.Context, args ...any) error {
+			// Check if this OnEntry is due to the initial TriggerProcessInput
+			// We only want the LLM call logic to run once per "real" entry, not on the artificial starter trigger if args are empty.
+			// However, the first call to Fire will pass `ctx` as an arg.
+			// The main logic of OnEntry should proceed.
+
 			if fsmCtx.currentTurn >= fsmCtx.maxTurns {
 				zap.S().Warnf("Max interaction turns (%d) reached.", fsmCtx.maxTurns)
 				fsmCtx.lastError = errors.New("exceeded maximum interaction turns")
@@ -379,7 +385,7 @@ func (a *Agent) Process(ctx context.Context, request string) (string, error) {
 
 	// Activate the FSM to process the initial state's OnEntry action and subsequent transitions.
 	// Pass the context to be available for actions triggered by Activate.
-	activateErr := fsm.Activate(ctx)
+	activateErr := fsm.ActivateCtx(ctx)
 	if activateErr != nil {
 		// This error would be from an action called during activation, e.g., the first OnEntry.
 		// Or if Activate itself has an issue.
