@@ -4,11 +4,17 @@ import (
 	"github.com/spf13/viper"
 )
 
+// MCPServerConfig holds the configuration for a single MCP server, including custom headers.
+type MCPServerConfig struct {
+	URL     string            `mapstructure:"url"`
+	Headers map[string]string `mapstructure:"headers"`
+}
+
 // Config holds the application configuration
 type Config struct {
 	LLM        LLMConfig
 	Server     ServerConfig
-	MCPServers []string `mapstructure:"mcp_servers"`
+	MCPServers []MCPServerConfig `mapstructure:"mcp_servers"`
 }
 
 // LLMConfig holds the LLM configuration
