@@ -4,9 +4,20 @@ import (
 	"github.com/spf13/viper"
 )
 
-// MCPServerConfig holds the configuration for a single MCP server, including custom headers.
+// MCPClientType defines the type of MCP client to use for a server.
+type MCPClientType string
+
+const (
+	// ClientTypeSSE uses the NewSSEMCPClient.
+	ClientTypeSSE MCPClientType = "sse"
+	// ClientTypeStreamableHTTP uses the NewStreamableHttpClient.
+	ClientTypeStreamableHTTP MCPClientType = "streamable_http"
+)
+
+// MCPServerConfig holds the configuration for a single MCP server, including custom headers and client type.
 type MCPServerConfig struct {
 	URL     string            `mapstructure:"url"`
+	Type    MCPClientType     `mapstructure:"type"` // "sse" or "streamable_http"
 	Headers map[string]string `mapstructure:"headers"`
 }
 

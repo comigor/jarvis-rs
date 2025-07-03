@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors" // Added for errors.New
 	"fmt"    // For fmt.Errorf
-	"strings"
 
 	"github.com/jarvis-g2o/internal/config"
 	"github.com/jarvis-g2o/pkg/llm"
@@ -71,26 +70,39 @@ func New(llmClient llm.Client, appCfg config.Config) *Agent {
 		var mcpC *client.Client // Concrete client type from mcp-go
 		var err error
 
-		// Create client with headers
-		if strings.HasPrefix(serverCfg.URL, "ws://") || strings.HasPrefix(serverCfg.URL, "wss://") {
+		// Create client based on serverCfg.Type
+		switch serverCfg.Type {
+		case config.ClientTypeSSE:
 			var sseOpts []transport.ClientOption
 			if len(serverCfg.Headers) > 0 {
 				sseOpts = append(sseOpts, transport.WithHeaders(serverCfg.Headers))
 			}
 			mcpC, err = client.NewSSEMCPClient(serverCfg.URL, sseOpts...)
-		} else if strings.HasPrefix(serverCfg.URL, "http://") || strings.HasPrefix(serverCfg.URL, "https://") {
+		case config.ClientTypeStreamableHTTP:
 			var httpOpts []transport.StreamableHTTPCOption
 			if len(serverCfg.Headers) > 0 {
 				httpOpts = append(httpOpts, transport.WithHTTPHeaders(serverCfg.Headers))
 			}
 			mcpC, err = client.NewStreamableHttpClient(serverCfg.URL, httpOpts...)
-		} else {
-			zap.S().Warnf("Unsupported MCP server URL scheme: %s. Skipping.", serverCfg.URL)
+		default:
+			if serverCfg.Type == "" {
+				zap.S().Warnf("MCP server type not specified for URL %s. Skipping. Please set 'type' in config.yaml ('sse' or 'streamable_http').", serverCfg.URL)
+			} else {
+				zap.S().Warnf("Unsupported MCP server type '%s' for URL %s. Skipping. Supported types are 'sse' or 'streamable_http'.", serverCfg.Type, serverCfg.URL)
+			}
 			continue
 		}
 
 		if err != nil {
-			zap.S().Errorf("Failed to create MCP client for server %s: %v", serverCfg.URL, err)
+			zap.S().Errorf("Failed to create MCP client for server %s (type: %s): %v", serverCfg.URL, serverCfg.Type, err)
+			continue
+		}
+
+		// Start the client transport
+		err = mcpC.Start(backgroundCtx)
+		if err != nil {
+			zap.S().Errorf("Failed to start MCP client transport for server %s: %v", serverCfg.URL, err)
+			mcpC.Close() // Attempt to close if start failed
 			continue
 		}
 
