@@ -30,10 +30,11 @@ type Config struct {
 
 // LLMConfig holds the LLM configuration
 type LLMConfig struct {
-	Provider string `mapstructure:"provider"`
-	BaseURL  string `mapstructure:"base_url"`
-	APIKey   string `mapstructure:"api_key"`
-	Model    string `mapstructure:"model"`
+	Provider     string `mapstructure:"provider"`
+	BaseURL      string `mapstructure:"base_url"`
+	APIKey       string `mapstructure:"api_key"`
+	Model        string `mapstructure:"model"`
+	SystemPrompt string `mapstructure:"system_prompt"` // System prompt to use for the LLM
 }
 
 // ServerConfig holds the server configuration

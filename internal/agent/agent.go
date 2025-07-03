@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors" // Added for errors.New
 	"fmt"    // For fmt.Errorf
+	"strings" // For strings.Builder
 
 	"github.com/jarvis-g2o/internal/config"
 	"github.com/jarvis-g2o/pkg/llm"
@@ -52,16 +53,29 @@ type MCPClientInterface interface {
 
 // Agent is the main agent struct
 type Agent struct {
-	llmClient         llm.Client
-	cfg               config.LLMConfig
-	mcpClients        []MCPClientInterface
-	availableLLMTools []openai.Tool
+	llmClient            llm.Client
+	cfg                  config.LLMConfig
+	mcpClients           []MCPClientInterface
+	availableLLMTools    []openai.Tool
+	discoveredMCPPrompts []string // Stores the first system prompt discovered from each MCP server
+	defaultSystemPrompt  string
 }
 
 // New creates a new agent.
+const defaultSystemPrompt = "You are a helpful AI assistant. Please respond to the user's request accurately and concisely."
+
 func New(llmClient llm.Client, appCfg config.Config) *Agent {
-	initializedMcpClients := make([]MCPClientInterface, 0, len(appCfg.MCPServers))
-	aggregatedLLMTools := make([]openai.Tool, 0)
+	agentInstance := &Agent{ // Create an instance to hold discoveredMCPPrompts
+		llmClient:            llmClient,
+		cfg:                  appCfg.LLM,
+		mcpClients:           make([]MCPClientInterface, 0, len(appCfg.MCPServers)),
+		availableLLMTools:    make([]openai.Tool, 0),
+		discoveredMCPPrompts: make([]string, 0), // Initialize as an empty slice
+		defaultSystemPrompt:  defaultSystemPrompt,
+	}
+
+	initializedMcpClients := agentInstance.mcpClients // Use the slice from the instance
+	aggregatedLLMTools := agentInstance.availableLLMTools
 	toolNameSet := make(map[string]struct{}) // To ensure unique tool names for the LLM
 
 	backgroundCtx := context.Background() // For setup tasks like Initialize and ListTools
@@ -110,13 +124,39 @@ func New(llmClient llm.Client, appCfg config.Config) *Agent {
 		initReq := mcp.InitializeRequest{
 			Params: mcp.InitializeParams{Capabilities: mcp.ClientCapabilities{}}, // TODO: Populate capabilities
 		}
-		_, err = mcpC.Initialize(backgroundCtx, initReq)
+		initResult, err := mcpC.Initialize(backgroundCtx, initReq)
 		if err != nil {
 			zap.S().Errorf("Failed to initialize MCP client for server %s: %v", serverCfg.URL, err)
 			mcpC.Close() // Attempt to close if initialization failed
 			continue
 		}
 		initializedMcpClients = append(initializedMcpClients, mcpC)
+
+		// Discover system prompts from this client
+		if initResult != nil && initResult.ServerCapabilities.Extensions != nil {
+			if promptsVal, ok := initResult.ServerCapabilities.Extensions["system_prompts"]; ok {
+				serverFoundPrompt := ""
+				if prompts, ok := promptsVal.([]any); ok && len(prompts) > 0 {
+					for _, p := range prompts {
+						if promptStr, ok := p.(string); ok && promptStr != "" {
+							serverFoundPrompt = promptStr
+							break // Take the first valid prompt string from this server
+						}
+					}
+				} else if promptsStr, ok := promptsVal.([]string); ok && len(promptsStr) > 0 { // Handle if it's already []string
+					for _, promptStr := range promptsStr {
+						if promptStr != "" {
+							serverFoundPrompt = promptStr
+							break // Take the first valid prompt string from this server
+						}
+					}
+				}
+				if serverFoundPrompt != "" {
+					agentInstance.discoveredMCPPrompts = append(agentInstance.discoveredMCPPrompts, serverFoundPrompt)
+					zap.S().Infof("Discovered and added system prompt from MCP server %s: %s", serverCfg.URL, serverFoundPrompt)
+				}
+			}
+		}
 
 		// List tools from this client
 		listToolsReq := mcp.ListToolsRequest{}
@@ -177,12 +217,11 @@ func New(llmClient llm.Client, appCfg config.Config) *Agent {
 		zap.S().Info("MCP Clients initialized, but no tools found or registered from any MCP server for LLM.")
 	}
 
-	return &Agent{
-		llmClient:         llmClient,
-		cfg:               appCfg.LLM,
-		mcpClients:        initializedMcpClients,
-		availableLLMTools: aggregatedLLMTools,
-	}
+	// Update the slices in the agent instance directly if they were re-assigned locally
+	agentInstance.mcpClients = initializedMcpClients
+	agentInstance.availableLLMTools = aggregatedLLMTools
+
+	return agentInstance
 }
 
 // Process processes a request and returns a response.
@@ -200,8 +239,44 @@ func (a *Agent) Process(ctx context.Context, request string) (string, error) {
 		maxTurns     int
 	}
 
+	// Determine the base system prompt
+	baseSystemPrompt := a.defaultSystemPrompt
+	if a.cfg.SystemPrompt != "" {
+		baseSystemPrompt = a.cfg.SystemPrompt // User-configured prompt overrides default
+		zap.S().Debugf("Using base system prompt from config: %s", baseSystemPrompt)
+	} else {
+		zap.S().Debugf("Using default base system prompt: %s", baseSystemPrompt)
+	}
+
+	// Aggregate system prompts
+	var finalSystemPromptBuilder strings.Builder
+	finalSystemPromptBuilder.WriteString(baseSystemPrompt)
+
+	if len(a.discoveredMCPPrompts) > 0 {
+		zap.S().Debugf("Appending %d discovered MCP prompts.", len(a.discoveredMCPPrompts))
+		for _, mcpPrompt := range a.discoveredMCPPrompts {
+			if finalSystemPromptBuilder.Len() > 0 { // Add newline if there's already content
+				finalSystemPromptBuilder.WriteString("\n\n") // Using double newline for better separation
+			}
+			finalSystemPromptBuilder.WriteString(mcpPrompt)
+		}
+	}
+
+	finalSystemPrompt := finalSystemPromptBuilder.String()
+	zap.S().Infof("Final aggregated system prompt: %s", finalSystemPrompt)
+
+
+	initialMessages := []openai.ChatCompletionMessage{}
+	if finalSystemPrompt != "" {
+		initialMessages = append(initialMessages, openai.ChatCompletionMessage{
+			Role:    openai.ChatMessageRoleSystem,
+			Content: finalSystemPrompt,
+		})
+	}
+	initialMessages = append(initialMessages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: request})
+
 	fsmCtx := &fsmContext{
-		messages: []openai.ChatCompletionMessage{{Role: openai.ChatMessageRoleUser, Content: request}},
+		messages: initialMessages,
 		maxTurns: 5, // Max interaction turns (LLM -> Tool -> LLM = 1 turn)
 	}
 
