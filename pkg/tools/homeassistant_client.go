@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/jarvis-g2o/internal/config"
+	"go.uber.org/zap"
 )
 
 // HomeAssistantClient is a client for the Home Assistant API
@@ -26,14 +28,17 @@ func NewHomeAssistantClient(cfg config.HomeAssistantConfig) *HomeAssistantClient
 
 // CallService calls a service in Home Assistant
 func (c *HomeAssistantClient) CallService(ctx context.Context, domain, service string, data map[string]interface{}) error {
-	url := fmt.Sprintf("%s/api/services/%s/%s", c.cfg.URL, domain, service)
+	base := strings.TrimSuffix(c.cfg.URL, "/")
+	endpoint := fmt.Sprintf("%s/api/services/%s/%s", base, domain, service)
 
 	body, err := json.Marshal(data)
+	zap.S().Infow("homeassistant call", "url", endpoint, "body", string(body))
+
 	if err != nil {
 		return err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewBuffer(body))
 	if err != nil {
 		return err
 	}
@@ -48,6 +53,7 @@ func (c *HomeAssistantClient) CallService(ctx context.Context, domain, service s
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		zap.S().Warnw("homeassistant non-200", "url", endpoint, "status", resp.StatusCode)
 		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 

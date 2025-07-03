@@ -1,4 +1,3 @@
-
 package tools
 
 import "fmt"
@@ -6,6 +5,15 @@ import "fmt"
 // ToolManager manages the available tools
 type ToolManager struct {
 	tools map[string]Tool
+}
+
+// List returns all registered tools
+func (m *ToolManager) List() []Tool {
+	ts := make([]Tool, 0, len(m.tools))
+	for _, t := range m.tools {
+		ts = append(ts, t)
+	}
+	return ts
 }
 
 // NewToolManager creates a new ToolManager

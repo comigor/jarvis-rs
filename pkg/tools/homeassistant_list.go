@@ -7,6 +7,9 @@ import (
 	"github.com/jarvis-g2o/internal/config"
 )
 
+// Params returns empty struct
+func (t *HomeAssistantListTool) Params() any { return &struct{}{} }
+
 // HomeAssistantListTool lists all entity IDs available in Home Assistant
 // It helps users discover the correct entity_id to interact with.
 // No arguments are required.

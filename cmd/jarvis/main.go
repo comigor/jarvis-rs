@@ -22,6 +22,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("can't initialize zap logger: %v", err)
 	}
+	zap.ReplaceGlobals(logger)
 	sugar := logger.Sugar()
 
 	// Load configuration
@@ -57,7 +58,7 @@ func main() {
 
 		response, err := agent.Process(context.Background(), string(body))
 		if err != nil {
-			sugar.Errorw("process error", "err", err)
+			sugar.Errorw("process error", "err", err, "body", string(body))
 			http.Error(w, "failed to process request", http.StatusInternalServerError)
 			return
 		}

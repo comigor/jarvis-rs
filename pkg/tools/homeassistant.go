@@ -1,4 +1,3 @@
-
 package tools
 
 import (
@@ -7,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/jarvis-g2o/internal/config"
+	"go.uber.org/zap"
 )
 
 // HomeAssistantTool is a tool for interacting with Home Assistant
@@ -28,11 +28,26 @@ func (t *HomeAssistantTool) Name() string {
 
 // Description returns the description of the tool
 func (t *HomeAssistantTool) Description() string {
-	return "Interacts with Home Assistant to control smart home devices."
+	return "Controls Home Assistant devices. ALWAYS call 'home_assistant_list' first to obtain valid entity_ids, then invoke this tool with them."
+}
+
+// Params returns argument struct example for schema generation
+func (t *HomeAssistantTool) Params() any {
+    type args struct {
+        Domain  string                 `json:"domain"`
+        Service string                 `json:"service"`
+        Data    map[string]interface{} `json:"data,omitempty"`
+    }
+    return &args{}
+}
+
+	return &args{}
 }
 
 // Run runs the tool
 func (t *HomeAssistantTool) Run(args string) (string, error) {
+	zap.S().Infow("homeassistant tool invoked", "args", args)
+
 	var toolArgs struct {
 		Domain  string                 `json:"domain"`
 		Service string                 `json:"service"`

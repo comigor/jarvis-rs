@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/invopop/jsonschema"
 	"github.com/jarvis-g2o/internal/config"
 	"github.com/jarvis-g2o/pkg/llm"
 	"github.com/jarvis-g2o/pkg/tools"
 	"github.com/sashabaranov/go-openai"
+	"go.uber.org/zap"
 )
 
 // Agent is the main agent struct
@@ -43,6 +45,7 @@ func (a *Agent) Process(ctx context.Context, request string) (string, error) {
 		},
 	)
 
+	zap.S().Infow("llm first response", "resp", resp)
 	if err != nil {
 		return "", err
 	}
@@ -91,31 +94,17 @@ func (a *Agent) Process(ctx context.Context, request string) (string, error) {
 }
 
 func (a *Agent) getTools() []openai.Tool {
-	cmdSchema := json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"}},"required":["command"]}`)
-	return []openai.Tool{
-		{
+	tools := make([]openai.Tool, 0)
+	for _, t := range a.toolManager.List() {
+		schemaBytes, _ := json.Marshal(jsonschema.Reflect(t.Params()))
+		tools = append(tools, openai.Tool{
 			Type: openai.ToolTypeFunction,
 			Function: &openai.FunctionDefinition{
-				Name:        "home_assistant",
-				Description: "Interacts with Home Assistant to control smart home devices.",
-				Parameters:  cmdSchema,
+				Name:        t.Name(),
+				Description: t.Description(),
+				Parameters:  json.RawMessage(schemaBytes),
 			},
-		},
-		{
-			Type: openai.ToolTypeFunction,
-			Function: &openai.FunctionDefinition{
-				Name:        "google_calendar",
-				Description: "Interacts with Google Calendar to manage events.",
-				Parameters:  cmdSchema,
-			},
-		},
-		{
-			Type: openai.ToolTypeFunction,
-			Function: &openai.FunctionDefinition{
-				Name:        "home_assistant_list",
-				Description: "Lists Home Assistant entity IDs (devices).",
-				Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
-			},
-		},
+		})
 	}
+	return tools
 }
