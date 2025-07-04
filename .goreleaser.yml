@@ -33,9 +33,9 @@ release:
 
 dockers:
   - image_templates:
-      - "ghcr.io/jarvis-go/jarvis:{{ .Tag }}"
-      - "ghcr.io/jarvis-go/jarvis:v{{ .Major }}"
-      - "ghcr.io/jarvis-go/jarvis:latest"
+      - "ghcr.io/comigor/jarvis-go:{{ .Tag }}"
+      - "ghcr.io/comigor/jarvis-go:v{{ .Major }}"
+      - "ghcr.io/comigor/jarvis-go:latest"
     dockerfile: Dockerfile
     build_flag_templates:
       - "--platform=linux/amd64"
