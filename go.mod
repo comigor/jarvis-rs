@@ -1,4 +1,4 @@
-module github.com/jarvis-go
+module github.com/comigor/jarvis-go
 
 go 1.24.4
 

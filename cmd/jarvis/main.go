@@ -7,10 +7,10 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/comigor/jarvis-go/internal/agent"
+	"github.com/comigor/jarvis-go/internal/config"
+	"github.com/comigor/jarvis-go/internal/llm"
 	"github.com/go-chi/chi/v5"
-	"github.com/jarvis-go/internal/agent"
-	"github.com/jarvis-go/internal/config"
-	"github.com/jarvis-go/pkg/llm"
 	"go.uber.org/zap"
 )
 
