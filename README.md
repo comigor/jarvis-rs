@@ -38,6 +38,11 @@ llm:
   base_url: https://api.openai.com/v1
   api_key: YOUR_KEY
   model: gpt-4o-mini
+  # Optional: Sets the base system prompt for the LLM.
+  # If not set, a hardcoded default system prompt will be used as the base.
+  # Afterwards, any system prompts discovered from connected MCP servers will be
+  # appended to this base prompt (each on a new line).
+  # system_prompt: "You are a master chef specializing in Italian cuisine."
 home_assistant:
   url: http://hass.local:8123
   token: LONG_LIVED_TOKEN
