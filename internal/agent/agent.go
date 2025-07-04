@@ -133,29 +133,43 @@ func New(llmClient llm.Client, appCfg config.Config) *Agent {
 		initializedMcpClients = append(initializedMcpClients, mcpC)
 
 		// Discover system prompts from this client
-		if initResult != nil && initResult.ServerCapabilities.Extensions != nil {
-			if promptsVal, ok := initResult.ServerCapabilities.Extensions["system_prompts"]; ok {
-				serverFoundPrompt := ""
-				if prompts, ok := promptsVal.([]any); ok && len(prompts) > 0 {
-					for _, p := range prompts {
-						if promptStr, ok := p.(string); ok && promptStr != "" {
-							serverFoundPrompt = promptStr
-							break // Take the first valid prompt string from this server
+		if initResult != nil && initResult.Capabilities.Prompts != nil { // Check if server supports prompts capability
+			zap.S().Debugf("Server %s supports prompts. Checking Experimental capabilities for 'system_prompts'.", serverCfg.URL)
+			// Check if Experimental map exists and contains "system_prompts"
+			if initResult.Capabilities.Experimental != nil {
+				if promptsVal, ok := initResult.Capabilities.Experimental["system_prompts"]; ok {
+					serverFoundPrompt := ""
+					// Try to parse promptsVal as []any or []string
+					if prompts, ok := promptsVal.([]any); ok && len(prompts) > 0 {
+						for _, p := range prompts {
+							if promptStr, ok := p.(string); ok && promptStr != "" {
+								serverFoundPrompt = promptStr
+								break // Take the first valid prompt string
+							}
+						}
+					} else if promptsStr, ok := promptsVal.([]string); ok && len(promptsStr) > 0 {
+						for _, promptStr := range promptsStr {
+							if promptStr != "" {
+								serverFoundPrompt = promptStr
+								break // Take the first valid prompt string
+							}
 						}
 					}
-				} else if promptsStr, ok := promptsVal.([]string); ok && len(promptsStr) > 0 { // Handle if it's already []string
-					for _, promptStr := range promptsStr {
-						if promptStr != "" {
-							serverFoundPrompt = promptStr
-							break // Take the first valid prompt string from this server
-						}
+
+					if serverFoundPrompt != "" {
+						agentInstance.discoveredMCPPrompts = append(agentInstance.discoveredMCPPrompts, serverFoundPrompt)
+						zap.S().Infof("Discovered and added system prompt from MCP server %s via Experimental[\"system_prompts\"]: %s", serverCfg.URL, serverFoundPrompt)
+					} else {
+						zap.S().Debugf("Server %s supports prompts, but no valid 'system_prompts' list found in Experimental capabilities.", serverCfg.URL)
 					}
+				} else {
+					zap.S().Debugf("Server %s supports prompts, but 'system_prompts' key not found in Experimental capabilities.", serverCfg.URL)
 				}
-				if serverFoundPrompt != "" {
-					agentInstance.discoveredMCPPrompts = append(agentInstance.discoveredMCPPrompts, serverFoundPrompt)
-					zap.S().Infof("Discovered and added system prompt from MCP server %s: %s", serverCfg.URL, serverFoundPrompt)
-				}
+			} else {
+				zap.S().Debugf("Server %s supports prompts, but Experimental capabilities map is nil.", serverCfg.URL)
 			}
+		} else if initResult != nil { // initResult is not nil, but .Capabilities.Prompts is nil
+			zap.S().Debugf("Server %s does not explicitly list prompt support via Capabilities.Prompts.", serverCfg.URL)
 		}
 
 		// List tools from this client
