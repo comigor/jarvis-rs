@@ -2,6 +2,7 @@ package config
 
 import (
 	"github.com/spf13/viper"
+	"os"
 )
 
 // MCPClientType defines the type of MCP client to use for a server.
@@ -45,9 +46,13 @@ type ServerConfig struct {
 
 // Load loads the configuration from the config.yaml file
 func Load() (*Config, error) {
-	viper.SetConfigName("config")
-	viper.SetConfigType("yaml")
-	viper.AddConfigPath(".")
+	if cfgPath, ok := os.LookupEnv("CONFIG_PATH"); ok && cfgPath != "" {
+		viper.SetConfigFile(cfgPath)
+	} else {
+		viper.SetConfigName("config")
+		viper.SetConfigType("yaml")
+		viper.AddConfigPath(".")
+	}
 
 	if err := viper.ReadInConfig(); err != nil {
 		return nil, err
