@@ -10,7 +10,6 @@ import (
 	"github.com/comigor/jarvis-go/internal/agent"
 	"github.com/comigor/jarvis-go/internal/config"
 	"github.com/comigor/jarvis-go/internal/llm"
-	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 )
 
@@ -36,10 +35,10 @@ func main() {
 	agent := agent.New(llmClient, *cfg) // cfg is now *config.Config
 
 	// Initialize router
-	r := chi.NewRouter()
+	mux := http.NewServeMux()
 
 	// main inference endpoint
-	r.Post("/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			sugar.Errorw("read body error", "err", err)
@@ -63,7 +62,7 @@ func main() {
 	// Start server
 	serverAddr := fmt.Sprintf("%s:%s", cfg.Server.Host, cfg.Server.Port)
 	sugar.Infof("starting server on %s", serverAddr)
-	if err := http.ListenAndServe(serverAddr, r); err != nil {
+	if err := http.ListenAndServe(serverAddr, mux); err != nil {
 		sugar.Fatalf("failed to start server: %v", err)
 	}
 }

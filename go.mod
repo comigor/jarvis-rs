@@ -3,7 +3,6 @@ module github.com/comigor/jarvis-go
 go 1.24.4
 
 require (
-	github.com/go-chi/chi/v5 v5.2.2
 	github.com/mark3labs/mcp-go v0.32.0
 	github.com/qmuntal/stateless v1.7.2
 	github.com/sashabaranov/go-openai v1.40.3
