@@ -3,8 +3,8 @@ package agent
 import (
 	"context"
 	"encoding/json"
-	"errors" // Added for errors.New
-	"fmt"    // For fmt.Errorf
+	"errors"  // Added for errors.New
+	"fmt"     // For fmt.Errorf
 	"strings" // For strings.Builder
 
 	"github.com/jarvis-g2o/internal/config"
@@ -184,7 +184,7 @@ func New(llmClient llm.Client, appCfg config.Config) *Agent {
 			for _, mcpTool := range serverTools.Tools {
 				if _, exists := toolNameSet[mcpTool.Name]; !exists {
 					var paramsSchema json.RawMessage
-					if mcpTool.RawInputSchema != nil && len(mcpTool.RawInputSchema) > 0 && string(mcpTool.RawInputSchema) != "null" {
+					if len(mcpTool.RawInputSchema) > 0 && string(mcpTool.RawInputSchema) != "null" {
 						paramsSchema = mcpTool.RawInputSchema
 					} else {
 						schemaBytes, marshalErr := json.Marshal(mcpTool.InputSchema)
@@ -194,7 +194,7 @@ func New(llmClient llm.Client, appCfg config.Config) *Agent {
 						} else {
 							paramsSchema = json.RawMessage(schemaBytes)
 							if string(paramsSchema) == "{}" || string(paramsSchema) == "null" {
-								if mcpTool.RawInputSchema == nil || len(mcpTool.RawInputSchema) == 0 || string(mcpTool.RawInputSchema) == "null" {
+								if len(mcpTool.RawInputSchema) == 0 || string(mcpTool.RawInputSchema) == "null" {
 									zap.S().Warnf("Tool '%s' from MCP server %s has an empty or null schema (InputSchema: %s). Using default empty object schema for LLM.", mcpTool.Name, serverCfg.URL, string(paramsSchema))
 									paramsSchema = json.RawMessage(`{"type": "object", "properties": {}}`)
 								}
@@ -278,7 +278,6 @@ func (a *Agent) Process(ctx context.Context, request string) (string, error) {
 
 	finalSystemPrompt := finalSystemPromptBuilder.String()
 	zap.S().Infof("Final aggregated system prompt: %s", finalSystemPrompt)
-
 
 	initialMessages := []openai.ChatCompletionMessage{}
 	if finalSystemPrompt != "" {
@@ -440,8 +439,8 @@ func (a *Agent) Process(ctx context.Context, request string) (string, error) {
 		})
 
 	// Start the FSM
-	initialArgs := []any{ctx}                            // Pass context to OnEntry actions
-	err := fsm.Fire(TriggerProcessInput, initialArgs...) // Initial trigger, though ReadyToCallLLM's OnEntry does the first LLM call.
+	initialArgs := []any{ctx}                     // Pass context to OnEntry actions
+	fsm.Fire(TriggerProcessInput, initialArgs...) // Initial trigger, though ReadyToCallLLM's OnEntry does the first LLM call.
 	// Consider if TriggerProcessInput is needed or if OnEntry of initial state is enough.
 	// For now, ReadyToCallLLM's OnEntry is self-starting based on current fsmCtx.messages.
 
