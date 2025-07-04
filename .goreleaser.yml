@@ -1,0 +1,25 @@
+project_name: jarvis
+release:
+  github:
+    owner: jarvis-g2o
+    name: jarvis-g2o
+builds:
+  - id: jarvis
+    main: ./cmd/jarvis
+    binary: jarvis
+    goarch: [amd64, arm64]
+    goos: [linux, darwin, windows]
+    ldflags: -s -w
+
+archives:
+  - id: default
+    format: tar.gz
+    files:
+      - jarvis
+
+dockers:
+  - image_templates:
+      - ghcr.io/jarvis-g2o/jarvis:latest
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--platform=linux/amd64"
