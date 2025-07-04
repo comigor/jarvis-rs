@@ -8,9 +8,9 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/jarvis-g2o/internal/agent"
-	"github.com/jarvis-g2o/internal/config"
-	"github.com/jarvis-g2o/pkg/llm"
+	"github.com/jarvis-go/internal/agent"
+	"github.com/jarvis-go/internal/config"
+	"github.com/jarvis-go/pkg/llm"
 	"go.uber.org/zap"
 )
 

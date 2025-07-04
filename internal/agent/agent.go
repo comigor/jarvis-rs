@@ -7,8 +7,8 @@ import (
 	"fmt"     // For fmt.Errorf
 	"strings" // For strings.Builder
 
-	"github.com/jarvis-g2o/internal/config"
-	"github.com/jarvis-g2o/pkg/llm"
+	"github.com/jarvis-go/internal/config"
+	"github.com/jarvis-go/pkg/llm"
 
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/client/transport"

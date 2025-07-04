@@ -5,7 +5,7 @@
 3. Full tests: `go test ./...`. Single test: `go test -run ^TestName$ ./path/...`.
 4. Lint/format: `go vet ./...`, `go fmt ./...`; prefer `golangci-lint run` when available.
 5. Tidy deps: `go mod tidy && go mod vendor`.
-6. Import groups: stdlib, third-party, `github.com/jarvis-g2o/...`; blank line between; run `goimports`.
+6. Import groups: stdlib, third-party, `github.com/jarvis-go/...`; blank line between; run `goimports`.
 7. Formatting: `gofmt` (tabs, width 8); avoid comments unless exporting a symbol.
 8. Naming: CamelCase; exported upper-case, unexported lower; interfaces end *er* (`Closer`).
 9. Errors: return early, wrap with `fmt.Errorf("%w", err)`; no panics outside `main`.

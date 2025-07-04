@@ -1,8 +1,8 @@
 project_name: jarvis
 release:
   github:
-    owner: jarvis-g2o
-    name: jarvis-g2o
+    owner: comigor
+    name: jarvis-go
 builds:
   - id: jarvis
     main: ./cmd/jarvis
@@ -19,7 +19,7 @@ archives:
 
 dockers:
   - image_templates:
-      - ghcr.io/jarvis-g2o/jarvis:latest
+      - ghcr.io/jarvis-go/jarvis:latest
     dockerfile: Dockerfile
     build_flag_templates:
       - "--platform=linux/amd64"

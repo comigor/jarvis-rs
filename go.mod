@@ -1,4 +1,4 @@
-module github.com/jarvis-g2o
+module github.com/jarvis-go
 
 go 1.24.4
 

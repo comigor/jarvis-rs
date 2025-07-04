@@ -1,4 +1,4 @@
-# Jarvis G2O
+# Jarvis go
 
 Smart-home agent server built in Go 1.24.4.
 

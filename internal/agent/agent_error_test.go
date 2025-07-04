@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/jarvis-g2o/internal/config"
+	"github.com/jarvis-go/internal/config"
 	// openai import might be needed if mockLLM is used from agent_test, but it's redefined here.
 	// For simplicity, assuming mockLLM here is self-contained or we use the one from agent_test.
 	// If using agent_test.mockLLM, ensure no import cycles.
