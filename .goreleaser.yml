@@ -1,21 +1,35 @@
 project_name: jarvis
-release:
-  github:
-    owner: comigor
-    name: jarvis-go
+
+before:
+  hooks:
+
 builds:
-  - id: jarvis
-    main: ./cmd/jarvis
-    binary: jarvis
+  - main: ./cmd/jarvis
+    env:
+      - CGO_ENABLED=0
     goarch: [amd64, arm64]
     goos: [linux, darwin, windows]
     ldflags: -s -w
 
 archives:
-  - id: default
-    format: tar.gz
-    files:
-      - jarvis
+  - format: tar.gz
+    name_template: >-
+      jarvis-
+      {{- if eq .Os "darwin" }}mac-
+      {{- else if eq .Os "windows" }}windows-
+      {{- else if eq .Os "linux" }}linux-{{end}}
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "#86" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
+
+release:
+  github:
+    owner: comigor
+    name: jarvis-go
 
 dockers:
   - image_templates:
