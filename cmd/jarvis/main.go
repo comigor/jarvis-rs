@@ -4,28 +4,20 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/comigor/jarvis-go/internal/agent"
 	"github.com/comigor/jarvis-go/internal/config"
 	"github.com/comigor/jarvis-go/internal/llm"
-	"go.uber.org/zap"
 )
 
 func main() {
-	// Initialize logger
-	logger, err := zap.NewProduction()
-	if err != nil {
-		log.Fatalf("can't initialize zap logger: %v", err)
-	}
-	zap.ReplaceGlobals(logger)
-	sugar := logger.Sugar()
 
 	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
-		sugar.Fatalf("failed to load configuration: %v", err)
+		slog.Error("failed to load configuration", "error", err)
 	}
 
 	// Initialize LLM client
@@ -41,15 +33,15 @@ func main() {
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
-			sugar.Errorw("read body error", "err", err)
+			slog.Error("read body error", "err", err)
 			http.Error(w, "failed to read request body", http.StatusBadRequest)
 			return
 		}
-		sugar.Infow("inference request", "body", string(body))
+		slog.Info("inference request", "body", string(body))
 
 		response, err := agent.Process(context.Background(), string(body))
 		if err != nil {
-			sugar.Errorw("process error", "err", err, "body", string(body))
+			slog.Error("process error", "err", err, "body", string(body))
 			http.Error(w, "failed to process request", http.StatusInternalServerError)
 			return
 		}
@@ -61,8 +53,8 @@ func main() {
 
 	// Start server
 	serverAddr := fmt.Sprintf("%s:%s", cfg.Server.Host, cfg.Server.Port)
-	sugar.Infof("starting server on %s", serverAddr)
+	slog.Info("starting server", "address", serverAddr)
 	if err := http.ListenAndServe(serverAddr, mux); err != nil {
-		sugar.Fatalf("failed to start server: %v", err)
+		slog.Error("failed to start server", "error", err)
 	}
 }
