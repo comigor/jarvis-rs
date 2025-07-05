@@ -173,7 +173,7 @@ func TestAgentProcess_LLMRequestsMCPTool_MCPClientFails(t *testing.T) {
 	toolArgsJSON := `{}`
 	mcpErrorText := "MCP tool execution failed badly."
 	// This is the text that will be sent back to the LLM as the tool's output.
-	expectedToolOutputSentToLLM := "MCP tool call failed for all configured servers or tool not found (FSM helper)."
+	// mcpErrorText := "MCP tool call failed for all configured servers or tool not found (FSM helper)."
 	// It's possible the FSM helper itself returns the error string from errors.New, let's assume the more specific one for now.
 	// If executeMCPTool returns errors.New(mcpErrorText).Error(), then that's what's sent.
 	// The current executeMCPTool returns the string "MCP tool call failed..." if all clients fail OR if the CallTool itself returns an error that doesn't get parsed into TextContent.
@@ -181,9 +181,9 @@ func TestAgentProcess_LLMRequestsMCPTool_MCPClientFails(t *testing.T) {
 
 	// For this test, let's assume executeMCPTool will return the raw mcpErrorText if the call fails.
 	// The FSM's StateExecutingTools.OnEntry will then use this as content for the Tool message.
-	expectedToolOutputSentToLLM = mcpErrorText
+	// no-op
 
-	finalLLMResponseAfterError := "Sorry, I couldn't use the broken_tool due to an error: " + expectedToolOutputSentToLLM
+	finalLLMResponseAfterError := "Sorry, I couldn't use the broken_tool due to an error: " + mcpErrorText
 
 	cfg := config.Config{
 		LLM:        config.LLMConfig{Model: "gpt"},

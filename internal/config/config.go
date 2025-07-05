@@ -38,10 +38,16 @@ type LLMConfig struct {
 	SystemPrompt string `mapstructure:"system_prompt"` // System prompt to use for the LLM
 }
 
+// LogsConfig holds logging configuration
+type LogsConfig struct {
+	Level string `mapstructure:"level"`
+}
+
 // ServerConfig holds the server configuration
 type ServerConfig struct {
-	Host string `mapstructure:"host"`
-	Port string `mapstructure:"port"`
+	Host string     `mapstructure:"host"`
+	Port string     `mapstructure:"port"`
+	Logs LogsConfig `mapstructure:"logs"`
 }
 
 // Load loads the configuration from the config.yaml file

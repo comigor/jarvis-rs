@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors" // Added for errors.New
 	"fmt"    // For fmt.Errorf
-	"log/slog"
+	"github.com/comigor/jarvis-go/internal/logger"
 	"strings" // For strings.Builder
 
 	"github.com/comigor/jarvis-go/internal/config"
@@ -100,23 +100,25 @@ func New(llmClient llm.Client, appCfg config.Config) *Agent {
 			mcpC, err = client.NewStreamableHttpClient(serverCfg.URL, httpOpts...)
 		default:
 			if serverCfg.Type == "" {
-				slog.Warn("MCP server type not specified for URL. Skipping. Please set 'type' in config.yaml ('sse' or 'streamable_http').", "server", serverCfg.URL)
+				logger.L.Warn("MCP server type not specified for URL. Skipping. Please set 'type' in config.yaml ('sse' or 'streamable_http').", "server", serverCfg.URL)
 			} else {
-				slog.Warn("Unsupported MCP server type for URL. Skipping. Supported types are 'sse' or 'streamable_http'.", "type", serverCfg.Type, "server", serverCfg.URL)
+				logger.L.Warn("Unsupported MCP server type for URL. Skipping. Supported types are 'sse' or 'streamable_http'.", "type", serverCfg.Type, "server", serverCfg.URL)
 			}
 			continue
 		}
 
 		if err != nil {
-			slog.Error("Failed to create MCP client for server", "server", serverCfg.URL, "type", serverCfg.Type, "error", err)
+			logger.L.Error("Failed to create MCP client for server", "server", serverCfg.URL, "type", serverCfg.Type, "error", err)
 			continue
 		}
 
 		// Start the client transport
 		err = mcpC.Start(backgroundCtx)
 		if err != nil {
-			slog.Error("Failed to start MCP client transport for server", "server", serverCfg.URL, "error", err)
-			mcpC.Close() // Attempt to close if start failed
+			logger.L.Error("Failed to start MCP client transport for server", "server", serverCfg.URL, "error", err)
+			if cerr := mcpC.Close(); cerr != nil {
+				logger.L.Warn("MCP client close error after start failure", "error", cerr)
+			}
 			continue
 		}
 
@@ -126,15 +128,17 @@ func New(llmClient llm.Client, appCfg config.Config) *Agent {
 		}
 		initResult, err := mcpC.Initialize(backgroundCtx, initReq)
 		if err != nil {
-			slog.Error("Failed to initialize MCP client for server", "server", serverCfg.URL, "error", err)
-			mcpC.Close() // Attempt to close if initialization failed
+			logger.L.Error("Failed to initialize MCP client for server", "server", serverCfg.URL, "error", err)
+			if cerr := mcpC.Close(); cerr != nil {
+				logger.L.Warn("MCP client close error after init failure", "error", cerr)
+			}
 			continue
 		}
 		initializedMcpClients = append(initializedMcpClients, mcpC)
 
 		// Discover system prompts from this client
 		if initResult != nil && initResult.Capabilities.Prompts != nil { // Check if server supports prompts capability
-			slog.Debug("Server supports prompts. Checking Experimental capabilities for 'system_prompts'.", "server", serverCfg.URL)
+			logger.L.Debug("Server supports prompts. Checking Experimental capabilities for 'system_prompts'.", "server", serverCfg.URL)
 			// Check if Experimental map exists and contains "system_prompts"
 			if initResult.Capabilities.Experimental != nil {
 				if promptsVal, ok := initResult.Capabilities.Experimental["system_prompts"]; ok {
@@ -158,25 +162,25 @@ func New(llmClient llm.Client, appCfg config.Config) *Agent {
 
 					if serverFoundPrompt != "" {
 						agentInstance.discoveredMCPPrompts = append(agentInstance.discoveredMCPPrompts, serverFoundPrompt)
-						slog.Info("Discovered and added system prompt from MCP server", "server", serverCfg.URL, "prompt", serverFoundPrompt)
+						logger.L.Info("Discovered and added system prompt from MCP server", "server", serverCfg.URL, "prompt", serverFoundPrompt)
 					} else {
-						slog.Debug("Server supports prompts, but no valid 'system_prompts' list found in Experimental capabilities.", "server", serverCfg.URL)
+						logger.L.Debug("Server supports prompts, but no valid 'system_prompts' list found in Experimental capabilities.", "server", serverCfg.URL)
 					}
 				} else {
-					slog.Debug("Server supports prompts, but 'system_prompts' key not found in Experimental capabilities.", "server", serverCfg.URL)
+					logger.L.Debug("Server supports prompts, but 'system_prompts' key not found in Experimental capabilities.", "server", serverCfg.URL)
 				}
 			} else {
-				slog.Debug("Server supports prompts, but Experimental capabilities map is nil.", "server", serverCfg.URL)
+				logger.L.Debug("Server supports prompts, but Experimental capabilities map is nil.", "server", serverCfg.URL)
 			}
 		} else if initResult != nil { // initResult is not nil, but .Capabilities.Prompts is nil
-			slog.Debug("Server does not explicitly list prompt support via Capabilities.Prompts.", "server", serverCfg.URL)
+			logger.L.Debug("Server does not explicitly list prompt support via Capabilities.Prompts.", "server", serverCfg.URL)
 		}
 
 		// List tools from this client
 		listToolsReq := mcp.ListToolsRequest{}
 		serverTools, listErr := mcpC.ListTools(backgroundCtx, listToolsReq)
 		if listErr != nil {
-			slog.Warn("Failed to list tools for MCP client", "server", serverCfg.URL, "error", listErr)
+			logger.L.Warn("Failed to list tools for MCP client", "server", serverCfg.URL, "error", listErr)
 			// Continue with the client even if ListTools fails, it might support other operations.
 		}
 
@@ -189,13 +193,13 @@ func New(llmClient llm.Client, appCfg config.Config) *Agent {
 					} else {
 						schemaBytes, marshalErr := json.Marshal(mcpTool.InputSchema)
 						if marshalErr != nil {
-							slog.Error("Failed to marshal InputSchema for tool. Using empty schema.", "tool", mcpTool.Name, "error", marshalErr)
+							logger.L.Error("Failed to marshal InputSchema for tool. Using empty schema.", "tool", mcpTool.Name, "error", marshalErr)
 							paramsSchema = json.RawMessage(`{"type": "object", "properties": {}}`)
 						} else {
 							paramsSchema = json.RawMessage(schemaBytes)
 							if string(paramsSchema) == "{}" || string(paramsSchema) == "null" {
 								if len(mcpTool.RawInputSchema) == 0 || string(mcpTool.RawInputSchema) == "null" {
-									slog.Warn("Tool from MCP server has an empty or null schema. Using default empty object schema for LLM.", "tool", mcpTool.Name, "server", serverCfg.URL, "params", string(paramsSchema))
+									logger.L.Warn("Tool from MCP server has an empty or null schema. Using default empty object schema for LLM.", "tool", mcpTool.Name, "server", serverCfg.URL, "params", string(paramsSchema))
 									paramsSchema = json.RawMessage(`{"type": "object", "properties": {}}`)
 								}
 							}
@@ -203,7 +207,7 @@ func New(llmClient llm.Client, appCfg config.Config) *Agent {
 					}
 					if paramsSchema == nil {
 						paramsSchema = json.RawMessage(`{"type": "object", "properties": {}}`)
-						slog.Warn("Tool from MCP server resulted in nil schema. Using default empty object schema.", "tool", mcpTool.Name, "server", serverCfg.URL)
+						logger.L.Warn("Tool from MCP server resulted in nil schema. Using default empty object schema.", "tool", mcpTool.Name, "server", serverCfg.URL)
 					}
 
 					toolNameSet[mcpTool.Name] = struct{}{}
@@ -216,19 +220,19 @@ func New(llmClient llm.Client, appCfg config.Config) *Agent {
 						},
 					}
 					aggregatedLLMTools = append(aggregatedLLMTools, llmTool)
-					slog.Info("Registered tool from MCP server for LLM", mcpTool.Name, serverCfg.URL)
+					logger.L.Info("Registered tool from MCP server for LLM", mcpTool.Name, serverCfg.URL)
 				} else {
-					slog.Warn("Tool from MCP server already registered from another server. Skipping.", "tool", mcpTool.Name, "server", serverCfg.URL)
+					logger.L.Warn("Tool from MCP server already registered from another server. Skipping.", "tool", mcpTool.Name, "server", serverCfg.URL)
 				}
 			}
 		}
 	}
 
 	if len(initializedMcpClients) == 0 && len(appCfg.MCPServers) > 0 {
-		slog.Warn("No MCP clients were successfully initialized despite servers configured.", "length", len(appCfg.MCPServers))
+		logger.L.Warn("No MCP clients were successfully initialized despite servers configured.", "length", len(appCfg.MCPServers))
 	}
 	if len(aggregatedLLMTools) == 0 && len(appCfg.MCPServers) > 0 && len(initializedMcpClients) > 0 {
-		slog.Info("MCP Clients initialized, but no tools found or registered from any MCP server for LLM.")
+		logger.L.Info("MCP Clients initialized, but no tools found or registered from any MCP server for LLM.")
 	}
 
 	// Update the slices in the agent instance directly if they were re-assigned locally
@@ -257,9 +261,9 @@ func (a *Agent) Process(ctx context.Context, request string) (string, error) {
 	baseSystemPrompt := a.defaultSystemPrompt
 	if a.cfg.SystemPrompt != "" {
 		baseSystemPrompt = a.cfg.SystemPrompt // User-configured prompt overrides default
-		slog.Debug("Using base system prompt from config", "prompt", baseSystemPrompt)
+		logger.L.Debug("Using base system prompt from config", "prompt", baseSystemPrompt)
 	} else {
-		slog.Debug("Using default base system prompt", "prompt", baseSystemPrompt)
+		logger.L.Debug("Using default base system prompt", "prompt", baseSystemPrompt)
 	}
 
 	// Aggregate system prompts
@@ -267,7 +271,7 @@ func (a *Agent) Process(ctx context.Context, request string) (string, error) {
 	finalSystemPromptBuilder.WriteString(baseSystemPrompt)
 
 	if len(a.discoveredMCPPrompts) > 0 {
-		slog.Debug("Appending discovered MCP prompts.", "qty", len(a.discoveredMCPPrompts))
+		logger.L.Debug("Appending discovered MCP prompts.", "qty", len(a.discoveredMCPPrompts))
 		for _, mcpPrompt := range a.discoveredMCPPrompts {
 			if finalSystemPromptBuilder.Len() > 0 { // Add newline if there's already content
 				finalSystemPromptBuilder.WriteString("\n\n") // Using double newline for better separation
@@ -277,7 +281,7 @@ func (a *Agent) Process(ctx context.Context, request string) (string, error) {
 	}
 
 	finalSystemPrompt := finalSystemPromptBuilder.String()
-	slog.Info("Final aggregated system prompt", "prompt", finalSystemPrompt)
+	logger.L.Info("Final aggregated system prompt", "prompt", finalSystemPrompt)
 
 	initialMessages := []openai.ChatCompletionMessage{}
 	if finalSystemPrompt != "" {
@@ -310,13 +314,15 @@ func (a *Agent) Process(ctx context.Context, request string) (string, error) {
 			// The main logic of OnEntry should proceed.
 
 			if fsmCtx.currentTurn >= fsmCtx.maxTurns {
-				slog.Warn("Max interaction turns reached.", "maxTurns", fsmCtx.maxTurns)
+				logger.L.Warn("Max interaction turns reached.", "maxTurns", fsmCtx.maxTurns)
 				fsmCtx.lastError = errors.New("exceeded maximum interaction turns")
-				fsm.Fire(TriggerErrorOccurred, ctx) // Use specific trigger if stateless supports it directly in OnEntry
-				return nil                          // Or return the error if OnEntry allows it to halt further processing
+				if fireErr := fsm.Fire(TriggerErrorOccurred, ctx); fireErr != nil {
+					logger.L.Warn("FSM fire error", "error", fireErr)
+				}
+				return nil // Or return the error if OnEntry allows it to halt further processing
 			}
 			fsmCtx.currentTurn++
-			slog.Info("FSM: Entering StateReadyToCallLLM, turn", "currentTurn", fsmCtx.currentTurn)
+			logger.L.Debug("FSM: Entering StateReadyToCallLLM", "turn", fsmCtx.currentTurn)
 
 			llmResp, err := a.llmClient.CreateChatCompletion(
 				ctx,
@@ -327,12 +333,12 @@ func (a *Agent) Process(ctx context.Context, request string) (string, error) {
 				},
 			)
 			if err != nil {
-				slog.Error("LLM call failed", "error", err)
+				logger.L.Error("LLM call failed", "error", err)
 				fsmCtx.lastError = err
 				return fsm.Fire(TriggerErrorOccurred, ctx)
 			}
 			fsmCtx.llmResponse = &llmResp
-			slog.Info("LLM response received", "response", llmResp)
+			logger.L.Debug("LLM response received", "response", llmResp)
 
 			if len(llmResp.Choices) > 0 && len(llmResp.Choices[0].Message.ToolCalls) > 0 {
 				return fsm.Fire(TriggerLLMRequestedTools, ctx)
@@ -350,7 +356,7 @@ func (a *Agent) Process(ctx context.Context, request string) (string, error) {
 	//   - On ToolsExecutionFailed -> StateError
 	fsm.Configure(StateExecutingTools).
 		OnEntry(func(ctx context.Context, args ...any) error {
-			slog.Info("FSM: Entering StateExecutingTools")
+			logger.L.Debug("FSM: Entering StateExecutingTools")
 			if fsmCtx.llmResponse == nil || len(fsmCtx.llmResponse.Choices) == 0 {
 				fsmCtx.lastError = errors.New("cannot execute tools, no LLM response available")
 				return fsm.Fire(TriggerErrorOccurred, ctx)
@@ -362,7 +368,7 @@ func (a *Agent) Process(ctx context.Context, request string) (string, error) {
 			fsmCtx.toolResults = make([]openai.ChatCompletionMessage, 0, len(fsmCtx.toolCalls))
 
 			if len(a.mcpClients) == 0 && len(fsmCtx.toolCalls) > 0 {
-				slog.Warn("LLM requested tools, but no MCP clients are available.")
+				logger.L.Warn("LLM requested tools, but no MCP clients are available.")
 				// Create error results for each tool call
 				for _, tc := range fsmCtx.toolCalls {
 					fsmCtx.toolResults = append(fsmCtx.toolResults, openai.ChatCompletionMessage{
@@ -378,7 +384,7 @@ func (a *Agent) Process(ctx context.Context, request string) (string, error) {
 			for _, toolCall := range fsmCtx.toolCalls {
 				var toolArgs map[string]any
 				if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &toolArgs); err != nil {
-					slog.Error("Failed to unmarshal tool arguments for", "function", toolCall.Function.Name, "error", err)
+					logger.L.Error("Failed to unmarshal tool arguments for", "function", toolCall.Function.Name, "error", err)
 					fsmCtx.toolResults = append(fsmCtx.toolResults, openai.ChatCompletionMessage{
 						Role:       openai.ChatMessageRoleTool,
 						Content:    "Error: Could not parse arguments for tool " + toolCall.Function.Name,
@@ -407,7 +413,7 @@ func (a *Agent) Process(ctx context.Context, request string) (string, error) {
 	// Action: Extract final content from LLM response. This is a terminal state.
 	fsm.Configure(StateDone).
 		OnEntry(func(ctx context.Context, args ...any) error {
-			slog.Info("FSM: Entering StateDone")
+			logger.L.Debug("FSM: Entering StateDone")
 			if fsmCtx.llmResponse != nil && len(fsmCtx.llmResponse.Choices) > 0 {
 				// If the last LLM response had tool calls, this state might be entered incorrectly.
 				// This should only be entered if the LLM provides content without tool calls.
@@ -417,7 +423,7 @@ func (a *Agent) Process(ctx context.Context, request string) (string, error) {
 				} else {
 					// This case should ideally not happen if transitions are correct.
 					// LLM requested tools, but we ended up in Done.
-					slog.Error("FSM: Reached StateDone but last LLM response had tool calls.")
+					logger.L.Error("FSM: Reached StateDone but last LLM response had tool calls.")
 					fsmCtx.lastError = errors.New("FSM logic error: StateDone reached with pending tool calls")
 					// No direct firing to StateError from OnEntry, rely on Process loop check
 				}
@@ -431,7 +437,7 @@ func (a *Agent) Process(ctx context.Context, request string) (string, error) {
 	// Action: This is a terminal state. The error is already in fsmCtx.lastError.
 	fsm.Configure(StateError).
 		OnEntry(func(ctx context.Context, args ...any) error {
-			slog.Info("FSM: Entering StateError")
+			logger.L.Debug("FSM: Entering StateError")
 			if fsmCtx.lastError == nil {
 				fsmCtx.lastError = errors.New("FSM: reached error state without a specific error")
 			}
@@ -439,8 +445,10 @@ func (a *Agent) Process(ctx context.Context, request string) (string, error) {
 		})
 
 	// Start the FSM
-	initialArgs := []any{ctx}                     // Pass context to OnEntry actions
-	fsm.Fire(TriggerProcessInput, initialArgs...) // Initial trigger, though ReadyToCallLLM's OnEntry does the first LLM call.
+	initialArgs := []any{ctx} // Pass context to OnEntry actions
+	if fireErr := fsm.Fire(TriggerProcessInput, initialArgs...); fireErr != nil {
+		logger.L.Warn("FSM initial fire error", "error", fireErr)
+	}
 	// Consider if TriggerProcessInput is needed or if OnEntry of initial state is enough.
 	// For now, ReadyToCallLLM's OnEntry is self-starting based on current fsmCtx.messages.
 
@@ -489,7 +497,7 @@ func (a *Agent) Process(ctx context.Context, request string) (string, error) {
 	if activateErr != nil {
 		// This error would be from an action called during activation, e.g., the first OnEntry.
 		// Or if Activate itself has an issue.
-		slog.Error("FSM activation failed", "error", activateErr)
+		logger.L.Error("FSM activation failed", "error", activateErr)
 		// If lastError was set by an action, it might be more specific.
 		if fsmCtx.lastError != nil {
 			return "", fsmCtx.lastError
@@ -501,7 +509,7 @@ func (a *Agent) Process(ctx context.Context, request string) (string, error) {
 	currentState, err := fsm.State(ctx) // Pass context and handle error
 	if err != nil {
 		// This would be an error with the FSM itself, not a business logic error
-		slog.Error("FSM error when retrieving state", "error", err)
+		logger.L.Error("FSM error when retrieving state", "error", err)
 		return "", fmt.Errorf("FSM internal error: %w", err)
 	}
 
@@ -532,7 +540,7 @@ func (a *Agent) executeMCPTool(ctx context.Context, toolName string, toolArgs ma
 	var mcpCallSuccessful bool
 
 	for _, mcpClientInstance := range a.mcpClients {
-		slog.Info("Attempting CallTool via FSM helper", "tool", toolName)
+		logger.L.Debug("Attempting CallTool via FSM helper", "tool", toolName)
 		callToolRequest := mcp.CallToolRequest{
 			Params: mcp.CallToolParams{
 				Name:      toolName,
@@ -541,13 +549,13 @@ func (a *Agent) executeMCPTool(ctx context.Context, toolName string, toolArgs ma
 		}
 		mcpResult, callErr := mcpClientInstance.CallTool(ctx, callToolRequest)
 		if callErr != nil {
-			slog.Warn("MCP CallTool failed for a client (FSM helper)", "tool", toolName, "error", callErr)
+			logger.L.Warn("MCP CallTool failed for a client (FSM helper)", "tool", toolName, "error", callErr)
 			continue
 		}
 		if mcpResult != nil {
 			mcpCallSuccessful = true
 			if mcpResult.IsError {
-				slog.Warn("MCP tool executed with IsError=true (FSM helper)", "tool", toolName)
+				logger.L.Warn("MCP tool executed with IsError=true (FSM helper)", "tool", toolName)
 				for _, contentItem := range mcpResult.Content {
 					if textContent, ok := contentItem.(mcp.TextContent); ok {
 						toolOutput = textContent.Text
