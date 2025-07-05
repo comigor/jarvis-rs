@@ -1,7 +1,7 @@
 package llm
 
 import (
-	"github.com/jarvis-go/internal/config"
+	"github.com/comigor/jarvis-go/internal/config"
 	"github.com/sashabaranov/go-openai"
 )
 

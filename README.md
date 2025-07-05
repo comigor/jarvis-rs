@@ -1,4 +1,4 @@
-# Jarvis go
+# J.A.R.V.I.S.
 
 Smart-home agent server built in Go 1.24.4.
 
@@ -12,18 +12,12 @@ make run
 
 POST plain-text prompts to `/`:
 ```bash
-curl -X POST --data 'Turn on kitchen light' http://localhost:8080/
-```
-Debug individual tools:
-```bash
-curl -X POST http://localhost:8080/debug/tool \
-  -H 'Content-Type: application/json' \
-  -d '{"tool":"home_assistant_list"}'
+curl -X POST http://localhost:8080/ --data 'Turn on kitchen light'
 ```
 
 ## Tests & lint
 ```bash
-go test ./...          # all tests
+make test              # all tests
 go test ./... -run Foo # single test
 make vet               # go vet lint (alias)
 ```
@@ -34,6 +28,7 @@ Create `config.yaml`:
 server:
   host: 0.0.0.0
   port: "8080"
+
 llm:
   base_url: https://api.openai.com/v1
   api_key: YOUR_KEY
@@ -43,7 +38,11 @@ llm:
   # Afterwards, any system prompts discovered from connected MCP servers will be
   # appended to this base prompt (each on a new line).
   # system_prompt: "You are a master chef specializing in Italian cuisine."
-home_assistant:
-  url: http://hass.local:8123
-  token: LONG_LIVED_TOKEN
+
+mcp_servers:
+  # - url: "http://localhost:3000/mcp"
+  #   headers:
+  #     Authorization: "Bearer ..."
+  - type: "sse"
+    url: "http://localhost:8123/mcp_server/sse"
 ```

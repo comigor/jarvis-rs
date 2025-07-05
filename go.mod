@@ -1,15 +1,13 @@
-module github.com/jarvis-go
+module github.com/comigor/jarvis-go
 
 go 1.24.4
 
 require (
-	github.com/go-chi/chi/v5 v5.2.2
 	github.com/mark3labs/mcp-go v0.32.0
 	github.com/qmuntal/stateless v1.7.2
 	github.com/sashabaranov/go-openai v1.40.3
 	github.com/spf13/viper v1.20.1
 	github.com/stretchr/testify v1.10.0
-	go.uber.org/zap v1.27.0
 )
 
 require (

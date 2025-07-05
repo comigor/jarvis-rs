@@ -7,7 +7,7 @@ import (
 	"strconv" // Added for Itoa
 	"testing"
 
-	"github.com/jarvis-go/internal/config"
+	"github.com/comigor/jarvis-go/internal/config"
 	"github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/require"
 
