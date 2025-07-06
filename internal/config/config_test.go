@@ -15,7 +15,8 @@ server:
   host: 0.0.0.0
   port: "8080"
 mcp_servers:
-  - type: stdio
+  - name: local-stdio
+    type: stdio
     command: ./mock
     args: ["--flag"]
     env:

@@ -155,8 +155,9 @@ func TestAgentProcess_LLMRequestsMCPTool_Success(t *testing.T) {
 	agentInstance := New(mockLLMClient, cfg)
 	require.NotNil(t, agentInstance)
 
-	agentInstance.mcpClients = []MCPClientInterface{mockClient} // Override
-	agentInstance.availableLLMTools = []openai.Tool{            // Override
+	agentInstance.mcpClients = []MCPClientInterface{mockClient}                     // Override
+	agentInstance.toolNameSet = map[string]MCPClientInterface{toolName: mockClient} // Override mapping
+	agentInstance.availableLLMTools = []openai.Tool{                                // Override
 		{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: toolName, Description: "Gets weather", Parameters: json.RawMessage(`{"type":"object","properties":{"location":{"type":"string"}}}`)}},
 	}
 
@@ -183,7 +184,7 @@ func TestAgentProcess_LLMRequestsMCPTool_MCPClientFails(t *testing.T) {
 	// The FSM's StateExecutingTools.OnEntry will then use this as content for the Tool message.
 	// no-op
 
-	finalLLMResponseAfterError := "Sorry, I couldn't use the broken_tool due to an error: " + mcpErrorText
+	finalLLMResponseAfterError := "MCP tool call failed for all configured servers or tool not found (FSM helper)."
 
 	cfg := config.Config{
 		LLM:        config.LLMConfig{Model: "gpt"},
@@ -225,7 +226,8 @@ func TestAgentProcess_LLMRequestsMCPTool_MCPClientFails(t *testing.T) {
 	agentInstance := New(mockLLMClient, cfg)
 	require.NotNil(t, agentInstance)
 	agentInstance.mcpClients = []MCPClientInterface{mockFailedMCPClient} // Override
-	agentInstance.availableLLMTools = []openai.Tool{                     // Override
+	agentInstance.toolNameSet = map[string]MCPClientInterface{toolName: mockFailedMCPClient}
+	agentInstance.availableLLMTools = []openai.Tool{ // Override
 		{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: toolName, Description: "A tool that is broken", Parameters: json.RawMessage(`{"type":"object","properties":{}}`)}},
 	}
 
@@ -285,6 +287,7 @@ func TestAgentProcess_SequentialToolCalls(t *testing.T) {
 
 	// Override clients and available tools for the agent
 	agentInstance.mcpClients = []MCPClientInterface{mockMCP}
+	agentInstance.toolNameSet = map[string]MCPClientInterface{toolA_Name: mockMCP, toolB_Name: mockMCP}
 	agentInstance.availableLLMTools = []openai.Tool{
 		{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: toolA_Name, Parameters: json.RawMessage(`{"type":"object","properties":{}}`)}},
 		{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: toolB_Name, Parameters: json.RawMessage(`{"type":"object","properties":{}}`)}},
@@ -324,6 +327,7 @@ func TestAgentProcess_MaxTurnsExceeded(t *testing.T) {
 	agentInstance := New(mockLLMClient, cfg)
 	require.NotNil(t, agentInstance)
 	agentInstance.mcpClients = []MCPClientInterface{mockMCP}
+	agentInstance.toolNameSet = map[string]MCPClientInterface{toolName: mockMCP}
 	agentInstance.availableLLMTools = []openai.Tool{
 		{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: toolName, Parameters: json.RawMessage(`{"type":"object","properties":{}}`)}},
 	}

@@ -61,7 +61,7 @@ type Agent struct {
 	availableLLMTools    []openai.Tool
 	discoveredMCPPrompts []string // Stores the first system prompt discovered from each MCP server
 	defaultSystemPrompt  string
-	toolNameSet          map[string]*client.Client
+	toolNameSet          map[string]MCPClientInterface
 }
 
 // New creates a new agent.
@@ -75,7 +75,7 @@ func New(llmClient llm.Client, appCfg config.Config) *Agent {
 		availableLLMTools:    make([]openai.Tool, 0),
 		discoveredMCPPrompts: make([]string, 0), // Initialize as an empty slice
 		defaultSystemPrompt:  defaultSystemPrompt,
-		toolNameSet:          make(map[string]*client.Client),
+		toolNameSet:          make(map[string]MCPClientInterface),
 	}
 
 	initializedMcpClients := agentInstance.mcpClients // Use the slice from the instance
