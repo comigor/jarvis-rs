@@ -1,8 +1,9 @@
 package config
 
 import (
-	"github.com/spf13/viper"
 	"os"
+
+	"github.com/spf13/viper"
 )
 
 // MCPClientType defines the type of MCP client to use for a server.
@@ -13,13 +14,20 @@ const (
 	ClientTypeSSE MCPClientType = "sse"
 	// ClientTypeStreamableHTTP uses the NewStreamableHttpClient.
 	ClientTypeStreamableHTTP MCPClientType = "streamable_http"
+	// ClientTypeStdio uses the NewStdioMCPClient.
+	ClientTypeStdio MCPClientType = "stdio"
 )
 
 // MCPServerConfig holds the configuration for a single MCP server, including custom headers and client type.
 type MCPServerConfig struct {
+	Name    string            `mapstructure:"name"`
 	URL     string            `mapstructure:"url"`
-	Type    MCPClientType     `mapstructure:"type"` // "sse" or "streamable_http"
+	Type    MCPClientType     `mapstructure:"type"` // "sse", "streamable_http" or "stdio"
 	Headers map[string]string `mapstructure:"headers"`
+	// Stdio specific fields
+	Command string            `mapstructure:"command"`
+	Args    []string          `mapstructure:"args"`
+	Env     map[string]string `mapstructure:"env"`
 }
 
 // Config holds the application configuration

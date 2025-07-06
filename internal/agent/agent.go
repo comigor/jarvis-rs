@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors" // Added for errors.New
 	"fmt"    // For fmt.Errorf
-	"github.com/comigor/jarvis-go/internal/logger"
+	"slices"
 	"strings" // For strings.Builder
+
+	"github.com/comigor/jarvis-go/internal/logger"
 
 	"github.com/comigor/jarvis-go/internal/config"
 	"github.com/comigor/jarvis-go/internal/llm"
@@ -59,6 +61,7 @@ type Agent struct {
 	availableLLMTools    []openai.Tool
 	discoveredMCPPrompts []string // Stores the first system prompt discovered from each MCP server
 	defaultSystemPrompt  string
+	toolNameSet          map[string]*client.Client
 }
 
 // New creates a new agent.
@@ -72,11 +75,11 @@ func New(llmClient llm.Client, appCfg config.Config) *Agent {
 		availableLLMTools:    make([]openai.Tool, 0),
 		discoveredMCPPrompts: make([]string, 0), // Initialize as an empty slice
 		defaultSystemPrompt:  defaultSystemPrompt,
+		toolNameSet:          make(map[string]*client.Client),
 	}
 
 	initializedMcpClients := agentInstance.mcpClients // Use the slice from the instance
 	aggregatedLLMTools := agentInstance.availableLLMTools
-	toolNameSet := make(map[string]struct{}) // To ensure unique tool names for the LLM
 
 	backgroundCtx := context.Background() // For setup tasks like Initialize and ListTools
 
@@ -98,28 +101,36 @@ func New(llmClient llm.Client, appCfg config.Config) *Agent {
 				httpOpts = append(httpOpts, transport.WithHTTPHeaders(serverCfg.Headers))
 			}
 			mcpC, err = client.NewStreamableHttpClient(serverCfg.URL, httpOpts...)
+		case config.ClientTypeStdio:
+			var env []string
+			for k, v := range serverCfg.Env {
+				env = append(env, fmt.Sprintf("%s=%s", k, v))
+			}
+			mcpC, err = client.NewStdioMCPClient(serverCfg.Command, env, serverCfg.Args...)
 		default:
 			if serverCfg.Type == "" {
-				logger.L.Warn("MCP server type not specified for URL. Skipping. Please set 'type' in config.yaml ('sse' or 'streamable_http').", "server", serverCfg.URL)
+				logger.L.Warn("MCP server type not specified for entry. Skipping. Please set 'type' in config.yaml ('sse', 'streamable_http', or 'stdio').", "name", serverCfg.Name)
 			} else {
-				logger.L.Warn("Unsupported MCP server type for URL. Skipping. Supported types are 'sse' or 'streamable_http'.", "type", serverCfg.Type, "server", serverCfg.URL)
+				logger.L.Warn("Unsupported MCP server type for entry. Skipping. Supported types are 'sse', 'streamable_http' or 'stdio'.", "type", serverCfg.Type, "name", serverCfg.Name)
 			}
 			continue
 		}
 
 		if err != nil {
-			logger.L.Error("Failed to create MCP client for server", "server", serverCfg.URL, "type", serverCfg.Type, "error", err)
+			logger.L.Error("Failed to create MCP client", "name", serverCfg.Name, "error", err)
 			continue
 		}
 
-		// Start the client transport
-		err = mcpC.Start(backgroundCtx)
-		if err != nil {
-			logger.L.Error("Failed to start MCP client transport for server", "server", serverCfg.URL, "error", err)
-			if cerr := mcpC.Close(); cerr != nil {
-				logger.L.Warn("MCP client close error after start failure", "error", cerr)
+		// Start the client transport if not stdio (already started internally)
+		if serverCfg.Type != config.ClientTypeStdio {
+			err = mcpC.Start(backgroundCtx)
+			if err != nil {
+				logger.L.Error("Failed to start MCP client transport", "name", serverCfg.Name, "error", err)
+				if cerr := mcpC.Close(); cerr != nil {
+					logger.L.Warn("MCP client close error after start failure", "error", cerr)
+				}
+				continue
 			}
-			continue
 		}
 
 		// Initialize client
@@ -128,65 +139,72 @@ func New(llmClient llm.Client, appCfg config.Config) *Agent {
 		}
 		initResult, err := mcpC.Initialize(backgroundCtx, initReq)
 		if err != nil {
-			logger.L.Error("Failed to initialize MCP client for server", "server", serverCfg.URL, "error", err)
+			logger.L.Error("Failed to initialize MCP client", "name", serverCfg.Name, "error", err)
 			if cerr := mcpC.Close(); cerr != nil {
 				logger.L.Warn("MCP client close error after init failure", "error", cerr)
 			}
 			continue
 		}
+		logger.L.Info("Server initialized", "name", serverCfg.Name)
 		initializedMcpClients = append(initializedMcpClients, mcpC)
 
 		// Discover system prompts from this client
 		if initResult != nil && initResult.Capabilities.Prompts != nil { // Check if server supports prompts capability
-			logger.L.Debug("Server supports prompts. Checking Experimental capabilities for 'system_prompts'.", "server", serverCfg.URL)
+			logger.L.Debug("Server supports prompts. Checking Experimental capabilities for 'system_prompts'.", "name", serverCfg.Name)
 			// Check if Experimental map exists and contains "system_prompts"
-			if initResult.Capabilities.Experimental != nil {
-				if promptsVal, ok := initResult.Capabilities.Experimental["system_prompts"]; ok {
-					serverFoundPrompt := ""
-					// Try to parse promptsVal as []any or []string
-					if prompts, ok := promptsVal.([]any); ok && len(prompts) > 0 {
-						for _, p := range prompts {
-							if promptStr, ok := p.(string); ok && promptStr != "" {
-								serverFoundPrompt = promptStr
-								break // Take the first valid prompt string
-							}
-						}
-					} else if promptsStr, ok := promptsVal.([]string); ok && len(promptsStr) > 0 {
-						for _, promptStr := range promptsStr {
-							if promptStr != "" {
-								serverFoundPrompt = promptStr
-								break // Take the first valid prompt string
-							}
-						}
-					}
+			serverFoundPrompt := ""
+			listPromptsReq := mcp.ListPromptsRequest{}
+			prompts, err := mcpC.ListPrompts(backgroundCtx, listPromptsReq)
+			if err != nil {
+				logger.L.Warn("Failed to list prompts", "name", serverCfg.Name, "error", err)
+			}
 
-					if serverFoundPrompt != "" {
-						agentInstance.discoveredMCPPrompts = append(agentInstance.discoveredMCPPrompts, serverFoundPrompt)
-						logger.L.Info("Discovered and added system prompt from MCP server", "server", serverCfg.URL, "prompt", serverFoundPrompt)
-					} else {
-						logger.L.Debug("Server supports prompts, but no valid 'system_prompts' list found in Experimental capabilities.", "server", serverCfg.URL)
-					}
-				} else {
-					logger.L.Debug("Server supports prompts, but 'system_prompts' key not found in Experimental capabilities.", "server", serverCfg.URL)
+			indexFirst := slices.IndexFunc(prompts.Prompts, func(p mcp.Prompt) bool {
+				return len(p.Arguments) == 0
+			})
+
+			if indexFirst != -1 {
+				getPromptReq := mcp.GetPromptRequest{
+					Params: mcp.GetPromptParams{Name: prompts.Prompts[indexFirst].Name},
 				}
+				firstPrompt, err := mcpC.GetPrompt(backgroundCtx, getPromptReq)
+				if err != nil {
+					logger.L.Warn("Failed to get prompt", "name", serverCfg.Name, "error", err)
+				}
+
+				indexAssistantMsg := slices.IndexFunc(firstPrompt.Messages, func(m mcp.PromptMessage) bool {
+					return m.Role == "assistant"
+				})
+				if indexAssistantMsg != -1 {
+					assistantMsg := firstPrompt.Messages[indexAssistantMsg]
+
+					if content, ok := assistantMsg.Content.(mcp.TextContent); ok {
+						serverFoundPrompt = content.Text
+					}
+				}
+			}
+
+			if serverFoundPrompt != "" {
+				agentInstance.discoveredMCPPrompts = append(agentInstance.discoveredMCPPrompts, serverFoundPrompt)
+				logger.L.Info("Discovered and added system prompt from MCP server", "name", serverCfg.Name, "prompt", serverFoundPrompt)
 			} else {
-				logger.L.Debug("Server supports prompts, but Experimental capabilities map is nil.", "server", serverCfg.URL)
+				logger.L.Debug("Server supports prompts, but no valid 'system_prompts' list found in Experimental capabilities.", "name", serverCfg.Name)
 			}
 		} else if initResult != nil { // initResult is not nil, but .Capabilities.Prompts is nil
-			logger.L.Debug("Server does not explicitly list prompt support via Capabilities.Prompts.", "server", serverCfg.URL)
+			logger.L.Debug("Server does not explicitly list prompt support via Capabilities.Prompts.", "name", serverCfg.Name)
 		}
 
 		// List tools from this client
 		listToolsReq := mcp.ListToolsRequest{}
 		serverTools, listErr := mcpC.ListTools(backgroundCtx, listToolsReq)
 		if listErr != nil {
-			logger.L.Warn("Failed to list tools for MCP client", "server", serverCfg.URL, "error", listErr)
+			logger.L.Warn("Failed to list tools for MCP client", "name", serverCfg.Name, "error", listErr)
 			// Continue with the client even if ListTools fails, it might support other operations.
 		}
 
 		if serverTools != nil {
 			for _, mcpTool := range serverTools.Tools {
-				if _, exists := toolNameSet[mcpTool.Name]; !exists {
+				if _, exists := agentInstance.toolNameSet[mcpTool.Name]; !exists {
 					var paramsSchema json.RawMessage
 					if len(mcpTool.RawInputSchema) > 0 && string(mcpTool.RawInputSchema) != "null" {
 						paramsSchema = mcpTool.RawInputSchema
@@ -199,7 +217,7 @@ func New(llmClient llm.Client, appCfg config.Config) *Agent {
 							paramsSchema = json.RawMessage(schemaBytes)
 							if string(paramsSchema) == "{}" || string(paramsSchema) == "null" {
 								if len(mcpTool.RawInputSchema) == 0 || string(mcpTool.RawInputSchema) == "null" {
-									logger.L.Warn("Tool from MCP server has an empty or null schema. Using default empty object schema for LLM.", "tool", mcpTool.Name, "server", serverCfg.URL, "params", string(paramsSchema))
+									logger.L.Warn("Tool from MCP server has an empty or null schema. Using default empty object schema for LLM.", "tool", mcpTool.Name, "name", serverCfg.Name, "params", string(paramsSchema))
 									paramsSchema = json.RawMessage(`{"type": "object", "properties": {}}`)
 								}
 							}
@@ -207,10 +225,10 @@ func New(llmClient llm.Client, appCfg config.Config) *Agent {
 					}
 					if paramsSchema == nil {
 						paramsSchema = json.RawMessage(`{"type": "object", "properties": {}}`)
-						logger.L.Warn("Tool from MCP server resulted in nil schema. Using default empty object schema.", "tool", mcpTool.Name, "server", serverCfg.URL)
+						logger.L.Warn("Tool from MCP server resulted in nil schema. Using default empty object schema.", "tool", mcpTool.Name, "name", serverCfg.Name)
 					}
 
-					toolNameSet[mcpTool.Name] = struct{}{}
+					agentInstance.toolNameSet[mcpTool.Name] = mcpC
 					llmTool := openai.Tool{
 						Type: openai.ToolTypeFunction,
 						Function: &openai.FunctionDefinition{
@@ -220,9 +238,9 @@ func New(llmClient llm.Client, appCfg config.Config) *Agent {
 						},
 					}
 					aggregatedLLMTools = append(aggregatedLLMTools, llmTool)
-					logger.L.Info("Registered tool from MCP server for LLM", mcpTool.Name, serverCfg.URL)
+					logger.L.Info("Registered tool from MCP server for LLM", "tool", mcpTool.Name, "name", serverCfg.Name)
 				} else {
-					logger.L.Warn("Tool from MCP server already registered from another server. Skipping.", "tool", mcpTool.Name, "server", serverCfg.URL)
+					logger.L.Warn("Tool from MCP server already registered from another server. Skipping.", "tool", mcpTool.Name, "name", serverCfg.Name)
 				}
 			}
 		}
@@ -539,49 +557,47 @@ func (a *Agent) executeMCPTool(ctx context.Context, toolName string, toolArgs ma
 	var toolOutput string
 	var mcpCallSuccessful bool
 
-	for _, mcpClientInstance := range a.mcpClients {
-		logger.L.Debug("Attempting CallTool via FSM helper", "tool", toolName)
-		callToolRequest := mcp.CallToolRequest{
-			Params: mcp.CallToolParams{
-				Name:      toolName,
-				Arguments: toolArgs,
-			},
-		}
-		mcpResult, callErr := mcpClientInstance.CallTool(ctx, callToolRequest)
-		if callErr != nil {
-			logger.L.Warn("MCP CallTool failed for a client (FSM helper)", "tool", toolName, "error", callErr)
-			continue
-		}
-		if mcpResult != nil {
-			mcpCallSuccessful = true
-			if mcpResult.IsError {
-				logger.L.Warn("MCP tool executed with IsError=true (FSM helper)", "tool", toolName)
-				for _, contentItem := range mcpResult.Content {
-					if textContent, ok := contentItem.(mcp.TextContent); ok {
-						toolOutput = textContent.Text
-						break
-					}
-				}
-				if toolOutput == "" {
-					toolOutput = "Tool execution resulted in an error without specific text."
-				}
-			} else {
-				for _, contentItem := range mcpResult.Content {
-					if textContent, ok := contentItem.(mcp.TextContent); ok {
-						toolOutput = textContent.Text
-						break
-					}
-				}
-				if toolOutput == "" {
-					resultBytes, merr := json.Marshal(mcpResult)
-					if merr != nil {
-						toolOutput = "Tool executed successfully, but result could not be formatted."
-					} else {
-						toolOutput = string(resultBytes)
-					}
+	mcpClientInstance := a.toolNameSet[toolName]
+
+	logger.L.Debug("Attempting CallTool via FSM helper", "tool", toolName, "arguments", toolArgs)
+	callToolRequest := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name:      toolName,
+			Arguments: toolArgs,
+		},
+	}
+	mcpResult, callErr := mcpClientInstance.CallTool(ctx, callToolRequest)
+	if callErr != nil {
+		logger.L.Warn("MCP CallTool failed for a client (FSM helper)", "tool", toolName, "error", callErr)
+	}
+	if mcpResult != nil {
+		mcpCallSuccessful = true
+		if mcpResult.IsError {
+			logger.L.Warn("MCP tool executed with IsError=true (FSM helper)", "tool", toolName, "result", mcpResult.Result, "content", mcpResult.Content)
+			for _, contentItem := range mcpResult.Content {
+				if textContent, ok := contentItem.(mcp.TextContent); ok {
+					toolOutput = textContent.Text
+					break
 				}
 			}
-			break
+			if toolOutput == "" {
+				toolOutput = "Tool execution resulted in an error without specific text."
+			}
+		} else {
+			for _, contentItem := range mcpResult.Content {
+				if textContent, ok := contentItem.(mcp.TextContent); ok {
+					toolOutput = textContent.Text
+					break
+				}
+			}
+			if toolOutput == "" {
+				resultBytes, merr := json.Marshal(mcpResult)
+				if merr != nil {
+					toolOutput = "Tool executed successfully, but result could not be formatted."
+				} else {
+					toolOutput = string(resultBytes)
+				}
+			}
 		}
 	}
 	if !mcpCallSuccessful {
