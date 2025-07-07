@@ -31,7 +31,7 @@ func TestAgentProcess_LLMError(t *testing.T) {
 	}
 	// Use the errorMockLLM for this specific test
 	a := New(&errorMockLLM{err: context.DeadlineExceeded}, cfg)
-	if _, err := a.Process(context.Background(), "hi"); err == nil {
+	if _, err := a.Process(context.Background(), "test-session", "hi"); err == nil {
 		t.Fatalf("expected error")
 	}
 }
