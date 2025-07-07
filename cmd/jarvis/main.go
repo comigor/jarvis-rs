@@ -59,16 +59,17 @@ func main() {
                 // Save user message
                 history.Save(history.Message{SessionID: sessionID, Role: "user", Content: req.Input, CreatedAt: time.Now()})
 
-                // Process input via agent
+                // Process input via agent (history retrieval happens inside Agent)
                 output, err := agent.Process(r.Context(), sessionID, req.Input)
                 if err != nil {
                         logger.L.Error("agent error", "err", err)
                         http.Error(w, "processing error", http.StatusInternalServerError)
-                        return
-                }
 
                 // Save assistant message
                 history.Save(history.Message{SessionID: sessionID, Role: "assistant", Content: output, CreatedAt: time.Now()})
+
+                        return
+                }
 
                 w.Header().Set("Content-Type", "application/json")
                 _ = json.NewEncoder(w).Encode(map[string]string{"session_id": sessionID, "output": output})

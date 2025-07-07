@@ -1,8 +1,6 @@
 package agent
 
 import (
-// Automatically generated modifications for session support
-
 	"context"
 	"encoding/json"
 	"errors" // Added for errors.New
@@ -10,6 +8,7 @@ import (
 	"slices"
 	"strings" // For strings.Builder
 
+    "github.com/comigor/jarvis-go/internal/history"
 	"github.com/comigor/jarvis-go/internal/logger"
 
 	"github.com/comigor/jarvis-go/internal/config"
@@ -282,35 +281,42 @@ func (a *Agent) Process(ctx context.Context, sessionID string, request string) (
 	if a.cfg.SystemPrompt != "" {
 		baseSystemPrompt = a.cfg.SystemPrompt // User-configured prompt overrides default
 		logger.L.Debug("Using base system prompt from config", "prompt", baseSystemPrompt)
+
+
 	} else {
 		logger.L.Debug("Using default base system prompt", "prompt", baseSystemPrompt)
 	}
 
-	// Aggregate system prompts
-	var finalSystemPromptBuilder strings.Builder
-	finalSystemPromptBuilder.WriteString(baseSystemPrompt)
 
-	if len(a.discoveredMCPPrompts) > 0 {
-		logger.L.Debug("Appending discovered MCP prompts.", "qty", len(a.discoveredMCPPrompts))
-		for _, mcpPrompt := range a.discoveredMCPPrompts {
-			if finalSystemPromptBuilder.Len() > 0 { // Add newline if there's already content
-				finalSystemPromptBuilder.WriteString("\n\n") // Using double newline for better separation
-			}
-			finalSystemPromptBuilder.WriteString(mcpPrompt)
-		}
-	}
+	// Retrieve previous history
+    prevMessages := history.List(sessionID)
 
-	finalSystemPrompt := finalSystemPromptBuilder.String()
-	logger.L.Info("Final aggregated system prompt", "prompt", finalSystemPrompt)
+    // Aggregate system prompts
+    var finalSystemPromptBuilder strings.Builder
+    finalSystemPromptBuilder.WriteString(baseSystemPrompt)
+    if len(a.discoveredMCPPrompts) > 0 {
+        logger.L.Debug("Appending discovered MCP prompts.", "qty", len(a.discoveredMCPPrompts))
+        for _, mcpPrompt := range a.discoveredMCPPrompts {
+            if finalSystemPromptBuilder.Len() > 0 {
+                finalSystemPromptBuilder.WriteString("\n\n")
+            }
+            finalSystemPromptBuilder.WriteString(mcpPrompt)
+        }
+    }
 
-	initialMessages := []openai.ChatCompletionMessage{}
-	if finalSystemPrompt != "" {
-		initialMessages = append(initialMessages, openai.ChatCompletionMessage{
-			Role:    openai.ChatMessageRoleSystem,
-			Content: finalSystemPrompt,
-		})
-	}
-	initialMessages = append(initialMessages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: request})
+    finalSystemPrompt := finalSystemPromptBuilder.String()
+    logger.L.Info("Final aggregated system prompt", "prompt", finalSystemPrompt)
+
+    initialMessages := []openai.ChatCompletionMessage{}
+    if finalSystemPrompt != "" {
+        initialMessages = append(initialMessages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleSystem, Content: finalSystemPrompt})
+    }
+    for _, pm := range prevMessages {
+        initialMessages = append(initialMessages, openai.ChatCompletionMessage{Role: pm.Role, Content: pm.Content})
+    }
+    if len(prevMessages) == 0 || prevMessages[len(prevMessages)-1].Role != openai.ChatMessageRoleUser || prevMessages[len(prevMessages)-1].Content != request {
+        initialMessages = append(initialMessages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: request})
+    }
 
 	fsmCtx := &fsmContext{
 		messages: initialMessages,

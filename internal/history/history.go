@@ -61,3 +61,31 @@ func Save(msg Message) {
     messages = append(messages, msg)
     mu.Unlock()
 }
+
+// List returns all messages of a session in chronological order.
+func List(sessionID string) []Message {
+    dbOnce.Do(initDB)
+    var out []Message
+    if initErr == nil && db != nil {
+        rows, err := db.Query(`SELECT id, session_id, role, content, created_at FROM messages WHERE session_id = ? ORDER BY id ASC;`, sessionID)
+        if err == nil {
+            defer rows.Close()
+            for rows.Next() {
+                var m Message
+                if err := rows.Scan(&m.ID, &m.SessionID, &m.Role, &m.Content, &m.CreatedAt); err == nil {
+                    out = append(out, m)
+                }
+            }
+            return out
+        }
+    }
+    mu.Lock()
+    for _, m := range messages {
+        if m.SessionID == sessionID {
+            out = append(out, m)
+        }
+    }
+    mu.Unlock()
+    return out
+}
+
