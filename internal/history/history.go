@@ -6,6 +6,7 @@ package history
 
 import (
     "database/sql"
+    "os"
     "sync"
 
     _ "github.com/glebarez/go-sqlite"
@@ -25,7 +26,11 @@ var (
 // initDB lazily opens the SQLite database and creates the messages table if it doesn't exist.
 func initDB() {
     var err error
-    db, err = sql.Open("sqlite", "file:history.db?_busy_timeout=10000&_fk=1")
+    dbPath := os.Getenv("HISTORY_DB_PATH")
+    if dbPath == "" {
+        dbPath = "history.db"
+    }
+    db, err = sql.Open("sqlite", "file:"+dbPath+"?_busy_timeout=10000&_fk=1")
     if err != nil {
         initErr = err
         logger.L.Warn("sqlite open failed; using in-memory history", "error", err)
