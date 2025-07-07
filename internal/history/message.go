@@ -2,9 +2,11 @@ package history
 
 import "time"
 
-// Message represents a single conversational message.
-// NOTE: Persistence to ObjectBox will be added in a follow-up change.
+//go:generate go run github.com/objectbox/objectbox-go/cmd/objectbox-gogen
+
+// Message represents a single conversational message persisted in ObjectBox.
 type Message struct {
+    Id        uint64    `objectbox:"id" json:"id"`
     SessionID string    `json:"session_id"`
     Role      string    `json:"role"`
     Content   string    `json:"content"`
