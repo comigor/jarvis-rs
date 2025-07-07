@@ -1,6 +1,8 @@
 package agent
 
 import (
+// Automatically generated modifications for session support
+
 	"context"
 	"encoding/json"
 	"errors" // Added for errors.New
@@ -262,7 +264,7 @@ func New(llmClient llm.Client, appCfg config.Config) *Agent {
 
 // Process processes a request and returns a response.
 // Process uses a Finite State Machine to manage the conversation flow with the LLM and tool calls.
-func (a *Agent) Process(ctx context.Context, request string) (string, error) {
+func (a *Agent) Process(ctx context.Context, sessionID string, request string) (string, error) {
 	// FSM context data
 	type fsmContext struct {
 		messages     []openai.ChatCompletionMessage

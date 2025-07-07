@@ -90,7 +90,7 @@ func TestAgentProcess_LLMRespondsDirectly(t *testing.T) {
 	// In the FSM model, New() populates availableLLMTools. If no servers, it's empty.
 	require.Empty(t, agentInstance.availableLLMTools, "Agent should have no tools available if no MCP servers are configured.")
 
-	out, err := agentInstance.Process(context.Background(), "User says hi")
+	out, err := agentInstance.Process(context.Background(), "test-session", "User says hi")
 	require.NoError(t, err)
 	require.Equal(t, llmDirectResponse, out)
 	// Check that the LLM was called without tools if availableLLMTools was empty
@@ -161,7 +161,7 @@ func TestAgentProcess_LLMRequestsMCPTool_Success(t *testing.T) {
 		{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: toolName, Description: "Gets weather", Parameters: json.RawMessage(`{"type":"object","properties":{"location":{"type":"string"}}}`)}},
 	}
 
-	out, err := agentInstance.Process(context.Background(), "What's the weather in London?")
+	out, err := agentInstance.Process(context.Background(), "test-session", "What's the weather in London?")
 	require.NoError(t, err)
 	require.Equal(t, finalLLMResponse, out)
 	require.Len(t, mockLLMClient.ReceivedTools, 1, "The first LLM call should have received tools")
@@ -231,7 +231,7 @@ func TestAgentProcess_LLMRequestsMCPTool_MCPClientFails(t *testing.T) {
 		{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: toolName, Description: "A tool that is broken", Parameters: json.RawMessage(`{"type":"object","properties":{}}`)}},
 	}
 
-	out, err := agentInstance.Process(context.Background(), "Use the broken tool")
+	out, err := agentInstance.Process(context.Background(), "test-session", "Use the broken tool")
 	require.NoError(t, err)
 	require.Equal(t, finalLLMResponseAfterError, out)
 }
@@ -293,7 +293,7 @@ func TestAgentProcess_SequentialToolCalls(t *testing.T) {
 		{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: toolB_Name, Parameters: json.RawMessage(`{"type":"object","properties":{}}`)}},
 	}
 
-	out, err := agentInstance.Process(context.Background(), "Sequential task")
+	out, err := agentInstance.Process(context.Background(), "test-session", "Sequential task")
 	require.NoError(t, err)
 	require.Equal(t, finalLLMResponse, out)
 }
@@ -332,7 +332,7 @@ func TestAgentProcess_MaxTurnsExceeded(t *testing.T) {
 		{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: toolName, Parameters: json.RawMessage(`{"type":"object","properties":{}}`)}},
 	}
 
-	out, err := agentInstance.Process(context.Background(), "Start loop")
+	out, err := agentInstance.Process(context.Background(), "test-session", "Start loop")
 	require.Error(t, err) // Expect an error
 	require.Contains(t, err.Error(), "exceeded maximum interaction turns")
 	require.Equal(t, "", out) // No final content

@@ -1,15 +1,17 @@
 package main
 
 import (
-	"context"
+	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
+	"time"
 
-	"github.com/comigor/jarvis-go/internal/logger"
+	"github.com/google/uuid"
 
 	"github.com/comigor/jarvis-go/internal/agent"
 	"github.com/comigor/jarvis-go/internal/config"
+	"github.com/comigor/jarvis-go/internal/history"
+	"github.com/comigor/jarvis-go/internal/logger"
 	"github.com/comigor/jarvis-go/internal/llm"
 )
 
@@ -28,32 +30,51 @@ func main() {
 	llmClient := llm.NewClient(cfg.LLM)
 
 	// Initialize agent (ToolManager removed)
+
 	agent := agent.New(llmClient, *cfg) // cfg is now *config.Config
 
 	// Initialize router
 	mux := http.NewServeMux()
+        // main inference endpoint (JSON {session_id,input})
+        mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+                if r.Method != http.MethodPost {
+                        http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+                        return
+                }
 
-	// main inference endpoint
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			logger.L.Error("read body error", "err", err)
-			http.Error(w, "failed to read request body", http.StatusBadRequest)
-			return
-		}
-		logger.L.Info("inference request", "body", string(body))
+                var req struct {
+                        SessionID string `json:"session_id"`
+                        Input     string `json:"input"`
+                }
+                if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+                        http.Error(w, "invalid JSON", http.StatusBadRequest)
+                        return
+                }
 
-		response, err := agent.Process(context.Background(), string(body))
-		if err != nil {
-			logger.L.Error("process error", "err", err, "body", string(body))
-			http.Error(w, "failed to process request", http.StatusInternalServerError)
-			return
-		}
+                sessionID := req.SessionID
+                if sessionID == "" {
+                        sessionID = uuid.New().String()
+                }
 
-		if _, writeErr := w.Write([]byte(response)); writeErr != nil {
-			logger.L.Warn("response write error", "err", writeErr)
-		}
-	})
+                // Save user message
+                history.Save(history.Message{SessionID: sessionID, Role: "user", Content: req.Input, CreatedAt: time.Now()})
+
+                // Process input via agent
+                output, err := agent.Process(r.Context(), sessionID, req.Input)
+                if err != nil {
+                        logger.L.Error("agent error", "err", err)
+                        http.Error(w, "processing error", http.StatusInternalServerError)
+                        return
+                }
+
+                // Save assistant message
+                history.Save(history.Message{SessionID: sessionID, Role: "assistant", Content: output, CreatedAt: time.Now()})
+
+                w.Header().Set("Content-Type", "application/json")
+                _ = json.NewEncoder(w).Encode(map[string]string{"session_id": sessionID, "output": output})
+        })
+
+
 
 	// debug tool endpoint removed
 
