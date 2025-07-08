@@ -11,8 +11,8 @@ import (
 	"github.com/comigor/jarvis-go/internal/agent"
 	"github.com/comigor/jarvis-go/internal/config"
 	"github.com/comigor/jarvis-go/internal/history"
-	"github.com/comigor/jarvis-go/internal/logger"
 	"github.com/comigor/jarvis-go/internal/llm"
+	"github.com/comigor/jarvis-go/internal/logger"
 )
 
 func main() {
@@ -35,47 +35,45 @@ func main() {
 
 	// Initialize router
 	mux := http.NewServeMux()
-        // main inference endpoint (JSON {session_id,input})
-        mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-                if r.Method != http.MethodPost {
-                        http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-                        return
-                }
+	// main inference endpoint (JSON {session_id,input})
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 
-                var req struct {
-                        SessionID string `json:"session_id"`
-                        Input     string `json:"input"`
-                }
-                if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-                        http.Error(w, "invalid JSON", http.StatusBadRequest)
-                        return
-                }
+		var req struct {
+			SessionID string `json:"session_id"`
+			Input     string `json:"input"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid JSON", http.StatusBadRequest)
+			return
+		}
 
-                sessionID := req.SessionID
-                if sessionID == "" {
-                        sessionID = uuid.New().String()
-                }
+		sessionID := req.SessionID
+		if sessionID == "" {
+			sessionID = uuid.New().String()
+		}
 
-                // Save user message
-                history.Save(history.Message{SessionID: sessionID, Role: "user", Content: req.Input, CreatedAt: time.Now()})
+		// Save user message
+		history.Save(history.Message{SessionID: sessionID, Role: "user", Content: req.Input, CreatedAt: time.Now()})
 
-                // Process input via agent (history retrieval happens inside Agent)
-                output, err := agent.Process(r.Context(), sessionID, req.Input)
-                if err != nil {
-                        logger.L.Error("agent error", "err", err)
-                        http.Error(w, "processing error", http.StatusInternalServerError)
+		// Process input via agent (history retrieval happens inside Agent)
+		output, err := agent.Process(r.Context(), sessionID, req.Input)
+		if err != nil {
+			logger.L.Error("agent error", "err", err)
+			http.Error(w, "processing error", http.StatusInternalServerError)
 
-                // Save assistant message
-                history.Save(history.Message{SessionID: sessionID, Role: "assistant", Content: output, CreatedAt: time.Now()})
+			// Save assistant message
+			history.Save(history.Message{SessionID: sessionID, Role: "assistant", Content: output, CreatedAt: time.Now()})
 
-                        return
-                }
+			return
+		}
 
-                w.Header().Set("Content-Type", "application/json")
-                _ = json.NewEncoder(w).Encode(map[string]string{"session_id": sessionID, "output": output})
-        })
-
-
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"session_id": sessionID, "output": output})
+	})
 
 	// debug tool endpoint removed
 

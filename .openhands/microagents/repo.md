@@ -1,6 +1,6 @@
-# CLAUDE.md
+# repo.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to agents when working with code in this repository.
 
 ---
 
@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Run API locally | `make run` (defaults to `:8080`) |
 | Full test suite | `make test` or `go test ./...` |
 | Single test | `go test -run ^TestName$ ./path/...` |
-| Vet / lint | `make vet` (`go vet ./...`) |
+| Lint & fmt | `make lint` (runs `go vet` + `gofmt`) |
 | Format imports | `goimports -w .` |
 | Dependency tidy | `go mod tidy && go mod vendor` |
 
@@ -29,7 +29,8 @@ internal/
   agent/           → core request processor (FSM + MCP + LLM)
   config/          → config loading via viper; defines Config struct
   llm/             → OpenAI-compatible client wrapper
-  logger/          → slog initialisation (JSON handler); replaces zap
+  logger/          → slog initialisation (JSON handler)
+  history/         → SQLite-backed session/message persistence
 ```
 
 1. **Startup** (`cmd/jarvis/main.go`)
@@ -52,13 +53,13 @@ internal/
 5. **Configuration** (`config.yaml`)
    • `server` (host/port) ‑ HTTP listener.
    • `llm` (base_url, api_key, model, system_prompt).
-   • `mcp_servers` list with `type` (`sse` or `streamable_http`), `url`, optional `headers`.
+   • `mcp_servers` list with `name`, `type` (`sse`, `streamable_http` or `stdio`), and then type-specific `command`, `args`, `url`, `headers`.
 
 ---
 
 ## Conventions & rules (from AGENTS.md)
 
-* Always run `make build` or `go vet ./... && go test ./...` before finishing a task.
+* Always run `make build` before finishing a task.
 * Keep `main` thin; place logic in internal packages.
 * Import order: stdlib, third-party, `github.com/comigor/jarvis-go/...`.
 * Tabs, 8-column width, `gofmt` enforced.
@@ -66,9 +67,3 @@ internal/
 * Tests are table-driven, live next to code as `*_test.go` and should not hit the network.
 * Interface names end with *er* (`Closer`), exported symbols need doc comments.
 * Commits: imperative present tense, ≤72 chars.
-
----
-
-## Hooks / CI
-
-No Cursor or Copilot policy files present. Follow conventions above and ensure `go vet` and tests pass before commits.

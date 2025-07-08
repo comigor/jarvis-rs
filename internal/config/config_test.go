@@ -33,7 +33,9 @@ func TestLoad_Stdio(t *testing.T) {
 	if _, err := tmp.WriteString(sampleStdioConfig); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	tmp.Close()
+	if err := tmp.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
 
 	t.Setenv("CONFIG_PATH", tmp.Name())
 

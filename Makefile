@@ -7,8 +7,9 @@ build:
 run:
 	go run ./cmd/jarvis
 
-vet:
-	go vet ./...
-
 test:
 	go test ./...
+
+lint:
+	go vet ./...
+	gofmt -w .
