@@ -1,7 +1,6 @@
 ---
 name: check
-allowed-tools: all
-description: Verify code quality, run tests, and ensure production readiness
+agent: CodeActAgent
 triggers:
 - /check
 ---
