@@ -11,12 +11,12 @@ inputs:
 ## 🎯 PROMPT SYNTHESIZER
 
 You will create a **complete, ready-to-copy prompt** by combining:
-1. The CLAUDE.md command template from ~/.openhands/CLAUDE.md
+1. The CLAUDE.md command template from .openhands/microagents/CLAUDE.md
 2. The specific task details provided here: $TASK_IDEA
 
 ### 📋 YOUR TASK:
 
-1. **READ** the CLAUDE.md command file at ~/.openhands/CLAUDE.md
+1. **READ** the CLAUDE.md command file at .openhands/microagents/CLAUDE.md
 2. **EXTRACT** the core prompt structure and requirements
 3. **INTEGRATE** the user's idea seamlessly into the prompt
 4. **OUTPUT** a complete prompt in a code block that can be easily copied
