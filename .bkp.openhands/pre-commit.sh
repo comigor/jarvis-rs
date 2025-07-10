@@ -1,4 +1,4 @@
 #!/bin/bash
-make vet
+make lint
 make build
 make test

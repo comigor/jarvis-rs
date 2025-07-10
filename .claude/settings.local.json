@@ -1,11 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(go mod tidy)",
-      "Bash(go list -m -f '{{.Dir}}' *)",
-      "Bash(make vet)",
-      "Bash(make test)",
-      "Bash(make build)"
+      "Bash(go:*)",
+      "Bash(make:*)",
+      "Bash(rustup:*)",
+      "Bash(cargo:*)"
     ],
     "deny": []
   }
