@@ -1,22 +1,19 @@
 {
   "permissions": {
     "allow": [
+      "Bash(cargo:*)",
+      "Bash(cat:*)",
       "Bash(go:*)",
+      "Bash(grep:*)",
       "Bash(make:*)",
       "Bash(rustup:*)",
-      "Bash(cargo:*)",
-      "mcp__serena__initial_instructions",
-      "mcp__serena__check_onboarding_performed",
-      "WebFetch(domain:github.com)",
-      "Bash(grep:*)",
-      "WebFetch(domain:docs.rs)",
-      "WebFetch(domain:crates.io)",
-      "WebFetch(domain:hackmd.io)",
-      "WebFetch(domain:gist.github.com)",
-      "WebFetch(domain:*)",
       "Bash(timeout:*)",
       "Bash(true)",
-      "Bash(cat:*)"
+      "WebFetch(domain:crates.io)",
+      "WebFetch(domain:docs.rs)",
+      "WebFetch(domain:gist.github.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:hackmd.io)"
     ],
     "deny": []
   }
