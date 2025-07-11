@@ -253,51 +253,173 @@ impl Agent {
     }
 
     async fn run_fsm_loop(&mut self, fsm: &mut AgentStateMachine) -> Result<String> {
+        let start_time = std::time::Instant::now();
+        info!("🚀 Starting FSM loop");
+        let mut loop_iteration = 0;
+
         // Initial event to start processing
+        debug!("🎬 Sending initial ProcessInput event");
+        let event_start = std::time::Instant::now();
         fsm.process_event(AgentEvent::ProcessInput, Some(self.llm_client.as_ref()))
             .await?;
+        debug!(
+            "⏱️ Initial ProcessInput event took {:?}",
+            event_start.elapsed()
+        );
 
         // Main FSM loop
+        info!("🔄 Entering main FSM loop");
         while !fsm.is_terminal() {
+            loop_iteration += 1;
+            debug!(
+                "🔄 FSM loop iteration {} - current state: {:?}",
+                loop_iteration,
+                fsm.current_state()
+            );
+
+            if loop_iteration > 5 {
+                error!(
+                    "🚨 FSM loop iteration limit exceeded ({}), breaking to prevent infinite loop",
+                    loop_iteration
+                );
+                break;
+            }
             match fsm.current_state() {
                 AgentState::AwaitingLlmResponse => {
-                    // Check if LLM requested tools or provided content
+                    // Check if we need to make an LLM call or process existing response
+                    if fsm.context.llm_response.is_none() {
+                        // Make LLM call
+                        debug!(
+                            "🤖 Making LLM call with {} messages",
+                            fsm.context.messages.len()
+                        );
+
+                        let chat_request = crate::llm::ChatCompletionRequest {
+                            model: "".to_string(), // Model will be set by the LLM client
+                            messages: fsm.context.messages.clone(),
+                            tools: self.available_tools.clone(),
+                            temperature: None,
+                            max_tokens: None,
+                        };
+
+                        let llm_start = std::time::Instant::now();
+                        match self.llm_client.create_chat_completion(chat_request).await {
+                            Ok(response) => {
+                                let llm_duration = llm_start.elapsed();
+                                info!(
+                                    "✅ LLM responded with {} choices in {:?}",
+                                    response.choices.len(),
+                                    llm_duration
+                                );
+                                fsm.context.llm_response = Some(response);
+                            }
+                            Err(e) => {
+                                error!("❌ LLM call failed: {}", e);
+                                fsm.process_event(
+                                    AgentEvent::ErrorOccurred,
+                                    Some(self.llm_client.as_ref()),
+                                )
+                                .await?;
+                                continue;
+                            }
+                        }
+                    }
+
+                    // Process the LLM response
                     if let Some(ref response) = &fsm.context.llm_response {
                         if !response.choices.is_empty() {
                             let choice = &response.choices[0];
                             if choice.message.tool_calls.is_some()
                                 && !choice.message.tool_calls.as_ref().unwrap().is_empty()
                             {
+                                let tool_calls = choice.message.tool_calls.as_ref().unwrap();
+                                debug!("🔧 LLM requested {} tool calls", tool_calls.len());
+
+                                // Convert LLM tool calls to MCP tool call requests
+                                let mut mcp_tool_calls = Vec::new();
+                                for tool_call in tool_calls {
+                                    let arguments: std::collections::HashMap<
+                                        String,
+                                        serde_json::Value,
+                                    > = serde_json::from_str(&tool_call.function.arguments)
+                                        .unwrap_or_default();
+
+                                    mcp_tool_calls.push(crate::mcp::McpToolCallRequest {
+                                        name: tool_call.function.name.clone(),
+                                        arguments,
+                                    });
+                                }
+
+                                // Store tool calls for execution
+                                fsm.context.pending_tool_calls = mcp_tool_calls;
+                                debug!(
+                                    "📋 Prepared {} MCP tool calls for execution",
+                                    fsm.context.pending_tool_calls.len()
+                                );
+
                                 fsm.process_event(
                                     AgentEvent::LlmRequestedTools,
                                     Some(self.llm_client.as_ref()),
                                 )
                                 .await?;
                             } else {
+                                debug!("💬 LLM provided content response");
                                 fsm.process_event(
                                     AgentEvent::LlmRespondedWithContent,
                                     Some(self.llm_client.as_ref()),
                                 )
                                 .await?;
                             }
+                        } else {
+                            warn!("⚠️ LLM response has no choices");
+                            fsm.process_event(
+                                AgentEvent::ErrorOccurred,
+                                Some(self.llm_client.as_ref()),
+                            )
+                            .await?;
                         }
                     }
                 }
                 AgentState::ExecutingTools => {
+                    debug!("🔧 Executing tools state");
+
                     // Prepare tool execution
                     let tool_calls = fsm.prepare_tool_execution();
+                    info!("🛠️ Executing {} tool calls", tool_calls.len());
 
                     // Execute tools
                     let mut results = Vec::new();
-                    for tool_call in &tool_calls {
+                    let tools_start = std::time::Instant::now();
+                    for (i, tool_call) in tool_calls.iter().enumerate() {
+                        debug!(
+                            "🔨 Executing tool {}/{}: {}",
+                            i + 1,
+                            tool_calls.len(),
+                            tool_call.name
+                        );
+                        let tool_start = std::time::Instant::now();
                         let result = self.execute_mcp_tool(tool_call).await;
+                        let tool_duration = tool_start.elapsed();
+                        debug!(
+                            "✅ Tool {} completed with {} content items in {:?}",
+                            tool_call.name,
+                            result.content.len(),
+                            tool_duration
+                        );
                         results.push(result);
                     }
+                    let total_tools_duration = tools_start.elapsed();
 
+                    info!(
+                        "🎯 All {} tools completed in {:?}, adding results to FSM",
+                        results.len(),
+                        total_tools_duration
+                    );
                     // Add results back to FSM
                     fsm.add_tool_execution_results(results);
 
                     // Continue with tools execution completed
+                    debug!("📤 Sending ToolsExecutionCompleted event");
                     fsm.process_event(
                         AgentEvent::ToolsExecutionCompleted,
                         Some(self.llm_client.as_ref()),
@@ -305,6 +427,32 @@ impl Agent {
                     .await?;
                 }
                 AgentState::ReadyToCallLlm => {
+                    // Clear previous LLM response and prepare for new call
+                    debug!("🔄 Ready to call LLM - clearing previous response");
+                    fsm.context.llm_response = None;
+
+                    // If we have tool results, add them to messages
+                    if !fsm.context.tool_call_results.is_empty() {
+                        debug!(
+                            "📝 Adding {} tool results to conversation",
+                            fsm.context.tool_call_results.len()
+                        );
+                        for tool_result in &fsm.context.tool_call_results {
+                            if let Some(crate::mcp::McpContent::Text { text }) =
+                                tool_result.content.first()
+                            {
+                                fsm.context.messages.push(ChatMessage {
+                                    role: "tool".to_string(),
+                                    content: text.clone(),
+                                    tool_calls: None,
+                                    tool_call_id: Some("tool_result".to_string()), // TODO: proper tool call ID tracking
+                                    name: None,
+                                });
+                            }
+                        }
+                        fsm.context.tool_call_results.clear();
+                    }
+
                     // Make another LLM call
                     fsm.process_event(AgentEvent::ProcessInput, Some(self.llm_client.as_ref()))
                         .await?;
@@ -316,9 +464,19 @@ impl Agent {
         }
 
         // Return result based on final state
+        let total_duration = start_time.elapsed();
+        info!(
+            "🏁 FSM loop completed in {} iterations, total duration: {:?}",
+            loop_iteration, total_duration
+        );
+
         match fsm.current_state() {
-            AgentState::Done => Ok(fsm.get_final_content().to_string()),
+            AgentState::Done => {
+                info!("✅ FSM completed successfully in state: Done");
+                Ok(fsm.get_final_content().to_string())
+            }
             AgentState::Error => {
+                error!("❌ FSM ended in error state after {:?}", total_duration);
                 if let Some(error) = fsm.get_last_error() {
                     Err(Error::internal(error))
                 } else {
@@ -327,10 +485,17 @@ impl Agent {
                     ))
                 }
             }
-            _ => Err(Error::internal(format!(
-                "FSM ended in unexpected state: {:?}",
-                fsm.current_state()
-            ))),
+            _ => {
+                warn!(
+                    "⚠️ FSM ended in unexpected state: {:?} after {:?}",
+                    fsm.current_state(),
+                    total_duration
+                );
+                Err(Error::internal(format!(
+                    "FSM ended in unexpected state: {:?}",
+                    fsm.current_state()
+                )))
+            }
         }
     }
 

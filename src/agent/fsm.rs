@@ -4,6 +4,7 @@ use crate::{
     Error, Result,
 };
 use std::collections::HashMap;
+use tracing::{debug, info, warn};
 
 // Agent states
 #[derive(Debug, Clone, PartialEq)]
@@ -124,6 +125,12 @@ impl AgentStateMachine {
         available_tools: Vec<Tool>,
         mcp_clients: HashMap<String, String>,
     ) -> Self {
+        info!(
+            "🚀 Creating new FSM with {} messages, {} tools, {} MCP clients",
+            initial_messages.len(),
+            available_tools.len(),
+            mcp_clients.len()
+        );
         Self {
             state: AgentState::ReadyToCallLlm,
             context: AgentContext::new(initial_messages, available_tools, mcp_clients),
@@ -135,6 +142,12 @@ impl AgentStateMachine {
     }
 
     pub fn transition(&mut self, event: AgentEvent) -> Result<()> {
+        let old_state = self.state.clone();
+        debug!(
+            "🔄 FSM processing event {:?} in state {:?}",
+            event, old_state
+        );
+
         let new_state = match (&self.state, &event) {
             (AgentState::ReadyToCallLlm, AgentEvent::ProcessInput) => {
                 AgentState::AwaitingLlmResponse
@@ -153,12 +166,28 @@ impl AgentStateMachine {
             (AgentState::ExecutingTools, AgentEvent::ErrorOccurred) => AgentState::Error,
             (AgentState::ReadyToCallLlm, AgentEvent::ErrorOccurred) => AgentState::Error,
             _ => {
+                warn!(
+                    "❌ Invalid FSM transition from {:?} with event {:?}",
+                    self.state, event
+                );
                 return Err(Error::fsm(format!(
                     "Invalid transition from {:?} with event {:?}",
                     self.state, event
-                )))
+                )));
             }
         };
+
+        if old_state != new_state {
+            info!(
+                "🎯 FSM state transition: {:?} -> {:?} (event: {:?})",
+                old_state, new_state, event
+            );
+        } else {
+            debug!(
+                "🔄 FSM staying in state {:?} after event {:?}",
+                old_state, event
+            );
+        }
 
         self.state = new_state;
         Ok(())
@@ -173,6 +202,10 @@ impl AgentStateMachine {
         event: AgentEvent,
         _llm_client: Option<&dyn crate::llm::LlmClient>,
     ) -> Result<()> {
+        debug!(
+            "📨 FSM received event {:?} in state {:?}",
+            event, self.state
+        );
         self.transition(event)
     }
 
