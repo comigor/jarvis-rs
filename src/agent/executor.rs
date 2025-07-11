@@ -335,8 +335,19 @@ impl Agent {
                                 let tool_calls = choice.message.tool_calls.as_ref().unwrap();
                                 debug!("🔧 LLM requested {} tool calls", tool_calls.len());
 
-                                // Convert LLM tool calls to MCP tool call requests
+                                // Add the LLM's assistant message with tool_calls to conversation
+                                debug!("📝 Adding LLM assistant message with tool_calls to conversation");
+                                fsm.context.messages.push(ChatMessage {
+                                    role: "assistant".to_string(),
+                                    content: choice.message.content.clone(),
+                                    tool_calls: choice.message.tool_calls.clone(),
+                                    tool_call_id: None,
+                                    name: None,
+                                });
+
+                                // Convert LLM tool calls to MCP tool call requests and store ID mapping
                                 let mut mcp_tool_calls = Vec::new();
+                                let mut tool_call_ids = Vec::new();
                                 for tool_call in tool_calls {
                                     let arguments: std::collections::HashMap<
                                         String,
@@ -348,10 +359,14 @@ impl Agent {
                                         name: tool_call.function.name.clone(),
                                         arguments,
                                     });
+
+                                    // Store the original LLM tool call ID
+                                    tool_call_ids.push(tool_call.id.clone());
                                 }
 
-                                // Store tool calls for execution
+                                // Store tool calls and ID mapping for execution
                                 fsm.context.pending_tool_calls = mcp_tool_calls;
+                                fsm.context.tool_call_id_mapping = tool_call_ids;
                                 debug!(
                                     "📋 Prepared {} MCP tool calls for execution",
                                     fsm.context.pending_tool_calls.len()
@@ -364,6 +379,22 @@ impl Agent {
                                 .await?;
                             } else {
                                 debug!("💬 LLM provided content response");
+
+                                // Add the LLM's response as an assistant message to conversation
+                                if !choice.message.content.is_empty() {
+                                    debug!(
+                                        "📝 Adding LLM response content to conversation: {}",
+                                        choice.message.content
+                                    );
+                                    fsm.context.messages.push(ChatMessage {
+                                        role: "assistant".to_string(),
+                                        content: choice.message.content.clone(),
+                                        tool_calls: None,
+                                        tool_call_id: None,
+                                        name: None,
+                                    });
+                                }
+
                                 fsm.process_event(
                                     AgentEvent::LlmRespondedWithContent,
                                     Some(self.llm_client.as_ref()),
@@ -437,20 +468,34 @@ impl Agent {
                             "📝 Adding {} tool results to conversation",
                             fsm.context.tool_call_results.len()
                         );
-                        for tool_result in &fsm.context.tool_call_results {
+                        for (index, tool_result) in fsm.context.tool_call_results.iter().enumerate()
+                        {
                             if let Some(crate::mcp::McpContent::Text { text }) =
                                 tool_result.content.first()
                             {
+                                // Get the corresponding tool call ID from the mapping
+                                let tool_call_id = fsm
+                                    .context
+                                    .tool_call_id_mapping
+                                    .get(index)
+                                    .cloned()
+                                    .unwrap_or_else(|| {
+                                        warn!("Missing tool call ID mapping for index {}", index);
+                                        format!("tool_call_{}", index)
+                                    });
+
+                                debug!("📝 Adding tool result for tool_call_id: {}", tool_call_id);
                                 fsm.context.messages.push(ChatMessage {
                                     role: "tool".to_string(),
                                     content: text.clone(),
                                     tool_calls: None,
-                                    tool_call_id: Some("tool_result".to_string()), // TODO: proper tool call ID tracking
+                                    tool_call_id: Some(tool_call_id),
                                     name: None,
                                 });
                             }
                         }
                         fsm.context.tool_call_results.clear();
+                        fsm.context.tool_call_id_mapping.clear();
                     }
 
                     // Make another LLM call

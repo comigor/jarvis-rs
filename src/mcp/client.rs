@@ -159,18 +159,6 @@ pub trait McpClient: Send + Sync {
 }
 
 pub async fn create_mcp_client(config: McpServerConfig) -> Result<Box<dyn McpClient>> {
-    match config.client_type {
-        McpClientType::Stdio => {
-            let client = super::stdio::StdioMcpClient::new(config).await?;
-            Ok(Box::new(client))
-        }
-        McpClientType::Sse => {
-            let client = super::sse::SseMcpClient::new(config).await?;
-            Ok(Box::new(client))
-        }
-        McpClientType::StreamableHttp => {
-            let client = super::http::HttpMcpClient::new(config).await?;
-            Ok(Box::new(client))
-        }
-    }
+    // Use rmcp client exclusively
+    crate::mcp_client::create_rmcp_client(config).await
 }

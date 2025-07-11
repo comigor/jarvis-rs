@@ -43,6 +43,7 @@ pub struct AgentContext {
     pub max_turns: usize,
     pub pending_tool_calls: Vec<McpToolCallRequest>,
     pub tool_call_results: Vec<McpToolCallResponse>,
+    pub tool_call_id_mapping: Vec<String>, // Maps MCP tool call index to original LLM tool call ID
     pub last_error: Option<String>,
     pub llm_response: Option<ChatCompletionResponse>,
 }
@@ -61,6 +62,7 @@ impl AgentContext {
             max_turns: 10, // Default limit
             pending_tool_calls: Vec::new(),
             tool_call_results: Vec::new(),
+            tool_call_id_mapping: Vec::new(),
             last_error: None,
             llm_response: None,
         }
@@ -105,6 +107,7 @@ impl AgentContext {
     pub fn clear_tool_calls(&mut self) {
         self.pending_tool_calls.clear();
         self.tool_call_results.clear();
+        self.tool_call_id_mapping.clear();
     }
 
     #[allow(dead_code)]
