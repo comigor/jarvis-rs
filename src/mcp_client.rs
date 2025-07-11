@@ -9,8 +9,8 @@ use rmcp::{
     model::{CallToolRequestParam, ClientCapabilities, ClientInfo, Implementation},
     service::{RunningService, ServiceExt},
     transport::{
-        sse_client::SseClientConfig, ConfigureCommandExt, SseClientTransport,
-        StreamableHttpClientTransport, TokioChildProcess,
+        sse_client::SseClientConfig, streamable_http_client::StreamableHttpClientTransportConfig,
+        ConfigureCommandExt, SseClientTransport, StreamableHttpClientTransport, TokioChildProcess,
     },
     RoleClient,
 };
@@ -170,17 +170,28 @@ impl RmcpClient {
 
         debug!("Creating HTTP connection to: {}", url);
 
-        // Warn if headers are configured since StreamableHttpClientTransport::from_uri doesn't support them
-        if !self.config.headers.is_empty() {
-            warn!(
-                "HTTP transport does not currently support custom headers. Headers will be ignored: {:?}",
-                self.config.headers.keys().collect::<Vec<_>>()
-            );
+        // Create HTTP client with headers (same pattern as SSE transport)
+        let mut headers = HeaderMap::new();
+        for (key, value) in &self.config.headers {
+            let header_name: reqwest::header::HeaderName = key
+                .parse()
+                .map_err(|e| Error::config(format!("Invalid header name '{}': {}", key, e)))?;
+            let header_value: reqwest::header::HeaderValue = value
+                .parse()
+                .map_err(|e| Error::config(format!("Invalid header value for '{}': {}", key, e)))?;
+            headers.insert(header_name, header_value);
         }
 
-        // Note: StreamableHttpClientTransport::from_uri doesn't support custom headers
-        // This is a limitation of the current rmcp API for this transport type
-        let transport = StreamableHttpClientTransport::from_uri(url.clone());
+        let client = reqwest::Client::builder()
+            .default_headers(headers)
+            .build()
+            .map_err(|e| Error::mcp(format!("Failed to create HTTP client: {}", e)))?;
+
+        // Use with_client instead of from_uri to support custom headers
+        let transport = StreamableHttpClientTransport::with_client(
+            client,
+            StreamableHttpClientTransportConfig::with_uri(url.clone()),
+        );
 
         // Create client info for MCP protocol compliance
         let client_info = ClientInfo {
