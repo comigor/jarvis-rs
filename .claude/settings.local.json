@@ -4,7 +4,12 @@
       "Bash(go:*)",
       "Bash(make:*)",
       "Bash(rustup:*)",
-      "Bash(cargo:*)"
+      "Bash(cargo:*)",
+      "mcp__serena__initial_instructions",
+      "mcp__serena__check_onboarding_performed",
+      "WebFetch(domain:github.com)",
+      "Bash(grep:*)",
+      "WebFetch(domain:docs.rs)"
     ],
     "deny": []
   }

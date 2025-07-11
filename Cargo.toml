@@ -1,0 +1,55 @@
+[package]
+name = "jarvis-rust"
+version = "0.1.0"
+edition = "2021"
+authors = ["Igor <igor@example.com>"]
+description = "Smart-home agent server written in Rust"
+
+[[bin]]
+name = "jarvis"
+path = "src/main.rs"
+
+[dependencies]
+# Web server
+axum = "0.7"
+tokio = { version = "1.0", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+
+# Database (libSQL - SQLite fork by Turso)
+libsql = "0.4"
+
+# Configuration
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1.0"
+
+# LLM Client
+async-openai = "0.29"
+reqwest = { version = "0.11", features = ["json", "stream"] }
+
+# FSM
+rust-fsm = "0.7"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+
+# Utilities
+uuid = { version = "1.0", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1.0"
+thiserror = "1.0"
+async-trait = "0.1"
+
+# MCP Protocol support
+# Note: We'll implement MCP clients manually for now
+futures = "0.3"
+bytes = "1.0"
+
+# Process management for stdio MCP clients
+# tokio-process = "0.2"  # Not needed, using tokio::process
+
+[dev-dependencies]
+tempfile = "3.0"
+mockall = "0.12"
