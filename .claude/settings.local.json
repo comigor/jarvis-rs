@@ -15,7 +15,8 @@
       "WebFetch(domain:gist.github.com)",
       "WebFetch(domain:*)",
       "Bash(timeout:*)",
-      "Bash(true)"
+      "Bash(true)",
+      "Bash(cat:*)"
     ],
     "deny": []
   }

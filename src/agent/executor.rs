@@ -149,7 +149,10 @@ impl Agent {
                                                 message.content
                                             {
                                                 prompts.push(text);
-                                                info!("Discovered system prompt from MCP client '{}': {}", config.name, prompt.name);
+                                                info!(
+                                                    "Discovered system prompt from MCP client '{}'",
+                                                    config.name
+                                                );
                                                 break;
                                             }
                                         }

@@ -342,21 +342,124 @@ impl crate::mcp::McpClient for RmcpClient {
     }
 
     async fn list_prompts(&self) -> Result<Vec<crate::mcp::McpPrompt>> {
-        // TODO: Use rmcp service to list prompts
-        warn!("list_prompts not yet implemented for rmcp client");
-        Ok(Vec::new())
+        if let Some(ref peer) = self.peer {
+            debug!("Listing prompts from rmcp peer: {}", self.name);
+
+            match peer.list_prompts(Default::default()).await {
+                Ok(prompts_result) => {
+                    info!(
+                        "Listed {} prompts from rmcp peer: {}",
+                        prompts_result.prompts.len(),
+                        self.name
+                    );
+
+                    // Convert rmcp prompts to our format
+                    let converted_prompts = prompts_result
+                        .prompts
+                        .into_iter()
+                        .map(|prompt| crate::mcp::McpPrompt {
+                            name: prompt.name,
+                            description: prompt.description.unwrap_or_default(),
+                            arguments: prompt
+                                .arguments
+                                .unwrap_or_default()
+                                .into_iter()
+                                .map(|arg| crate::mcp::McpPromptArgument {
+                                    name: arg.name,
+                                    description: arg.description.unwrap_or_default(),
+                                    required: arg.required.unwrap_or(false),
+                                })
+                                .collect(),
+                        })
+                        .collect();
+
+                    Ok(converted_prompts)
+                }
+                Err(e) => {
+                    warn!("Failed to list prompts from rmcp peer {}: {}", self.name, e);
+                    Err(Error::mcp(format!("Failed to list prompts: {}", e)))
+                }
+            }
+        } else {
+            warn!("rmcp peer not initialized for: {}", self.name);
+            Ok(Vec::new())
+        }
     }
 
     async fn get_prompt(
         &self,
-        _request: crate::mcp::McpGetPromptRequest,
+        request: crate::mcp::McpGetPromptRequest,
     ) -> Result<crate::mcp::McpGetPromptResponse> {
-        // TODO: Use rmcp service to get prompt
-        warn!("get_prompt not yet implemented for rmcp client");
-        Ok(crate::mcp::McpGetPromptResponse {
-            description: "Placeholder prompt".to_string(),
-            messages: Vec::new(),
-        })
+        if let Some(ref peer) = self.peer {
+            debug!(
+                "Getting prompt '{}' from rmcp peer: {}",
+                request.name, self.name
+            );
+
+            // Convert arguments to rmcp format
+            let arguments = if request.arguments.is_empty() {
+                None
+            } else {
+                Some(serde_json::Map::from_iter(
+                    request
+                        .arguments
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.clone())),
+                ))
+            };
+
+            let rmcp_request = rmcp::model::GetPromptRequestParam {
+                name: request.name.clone(),
+                arguments,
+            };
+
+            match peer.get_prompt(rmcp_request).await {
+                Ok(prompt_result) => {
+                    debug!("Prompt '{}' retrieved successfully via rmcp", request.name);
+
+                    // Convert rmcp prompt messages to our format
+                    let messages = prompt_result
+                        .messages
+                        .into_iter()
+                        .map(|message| crate::mcp::McpPromptMessage {
+                            role: format!("{:?}", message.role).to_lowercase(),
+                            content: match message.content {
+                                rmcp::model::PromptMessageContent::Text { text } => {
+                                    crate::mcp::McpContent::Text { text }
+                                }
+                                rmcp::model::PromptMessageContent::Image { image } => {
+                                    crate::mcp::McpContent::Image {
+                                        data: image.data.clone(),
+                                        mime_type: image.mime_type.clone(),
+                                    }
+                                }
+                                rmcp::model::PromptMessageContent::Resource { .. } => {
+                                    // For now, convert resources to text representation
+                                    crate::mcp::McpContent::Text {
+                                        text: "Resource content (not yet supported)".to_string(),
+                                    }
+                                }
+                            },
+                        })
+                        .collect();
+
+                    Ok(crate::mcp::McpGetPromptResponse {
+                        description: prompt_result.description.unwrap_or_default(),
+                        messages,
+                    })
+                }
+                Err(e) => {
+                    warn!(
+                        "Failed to get prompt '{}' via rmcp peer {}: {}",
+                        request.name, self.name, e
+                    );
+                    Err(Error::mcp(format!("Get prompt failed: {}", e)))
+                }
+            }
+        } else {
+            warn!("rmcp peer not initialized for: {}", self.name);
+            Err(Error::mcp("rmcp peer not initialized".to_string()))
+        }
     }
 
     async fn close(&mut self) -> Result<()> {
