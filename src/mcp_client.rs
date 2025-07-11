@@ -4,18 +4,16 @@ use crate::{
     Error, Result,
 };
 use async_trait::async_trait;
+use reqwest::header::HeaderMap;
 use rmcp::{
-    model::CallToolRequestParam,
+    model::{CallToolRequestParam, ClientCapabilities, ClientInfo, Implementation},
     service::{RunningService, ServiceExt},
-    transport::{ConfigureCommandExt, TokioChildProcess},
+    transport::{
+        sse_client::SseClientConfig, ConfigureCommandExt, SseClientTransport,
+        StreamableHttpClientTransport, TokioChildProcess,
+    },
     RoleClient,
 };
-
-#[cfg(feature = "transport-sse-client")]
-use rmcp::transport::sse_client::SseTransport;
-
-#[cfg(feature = "transport-streamable-http-client")]
-use rmcp::transport::streamable_http_client::StreamableHttpTransport;
 use tokio::process::Command;
 use tracing::{debug, info, warn};
 
@@ -23,7 +21,7 @@ use tracing::{debug, info, warn};
 pub struct RmcpClient {
     name: String,
     config: McpServerConfig,
-    peer: Option<RunningService<RoleClient, ()>>,
+    peer: Option<RunningService<RoleClient, rmcp::model::InitializeRequestParam>>,
 }
 
 impl RmcpClient {
@@ -73,12 +71,133 @@ impl RmcpClient {
 
         // Create the rmcp service using the pattern from the example
         let transport = TokioChildProcess::new(cmd.configure(|_| {}))?;
-        let peer = ()
+
+        // Create client info for MCP protocol compliance
+        let client_info = ClientInfo {
+            protocol_version: Default::default(),
+            capabilities: ClientCapabilities::default(),
+            client_info: Implementation {
+                name: "jarvis-rust".to_string(),
+                version: "0.1.0".to_string(),
+            },
+        };
+
+        let peer = client_info
             .serve(transport)
             .await
             .map_err(|e| Error::mcp(format!("Failed to create rmcp service: {}", e)))?;
 
         info!("Successfully created rmcp service for: {}", self.name);
+
+        // Store the peer for later use
+        self.peer = Some(peer);
+
+        Ok(())
+    }
+
+    async fn initialize_sse_service(&mut self) -> Result<()> {
+        let url = self
+            .config
+            .url
+            .as_ref()
+            .ok_or_else(|| Error::config("SSE MCP client requires 'url' field".to_string()))?;
+
+        debug!("Creating SSE connection to: {}", url);
+
+        let transport = if self.config.headers.is_empty() {
+            // Simple case without headers
+            SseClientTransport::start(url.clone())
+                .await
+                .map_err(|e| Error::mcp(format!("Failed to create SSE transport: {}", e)))?
+        } else {
+            // Custom client with headers
+            let mut headers = HeaderMap::new();
+            for (key, value) in &self.config.headers {
+                let header_name: reqwest::header::HeaderName = key
+                    .parse()
+                    .map_err(|e| Error::config(format!("Invalid header name '{}': {}", key, e)))?;
+                let header_value: reqwest::header::HeaderValue = value.parse().map_err(|e| {
+                    Error::config(format!("Invalid header value for '{}': {}", key, e))
+                })?;
+                headers.insert(header_name, header_value);
+            }
+
+            let client = reqwest::Client::builder()
+                .default_headers(headers)
+                .build()
+                .map_err(|e| Error::mcp(format!("Failed to create HTTP client: {}", e)))?;
+
+            SseClientTransport::start_with_client(
+                client,
+                SseClientConfig {
+                    sse_endpoint: url.clone().into(),
+                    ..Default::default()
+                },
+            )
+            .await
+            .map_err(|e| Error::mcp(format!("Failed to create SSE transport: {}", e)))?
+        };
+
+        // Create client info for MCP protocol compliance
+        let client_info = ClientInfo {
+            protocol_version: Default::default(),
+            capabilities: ClientCapabilities::default(),
+            client_info: Implementation {
+                name: "jarvis-rust".to_string(),
+                version: "0.1.0".to_string(),
+            },
+        };
+
+        let peer = client_info
+            .serve(transport)
+            .await
+            .map_err(|e| Error::mcp(format!("Failed to serve SSE rmcp service: {}", e)))?;
+
+        info!("Successfully created SSE rmcp service for: {}", self.name);
+
+        // Store the peer for later use
+        self.peer = Some(peer);
+
+        Ok(())
+    }
+
+    async fn initialize_http_service(&mut self) -> Result<()> {
+        let url = self
+            .config
+            .url
+            .as_ref()
+            .ok_or_else(|| Error::config("HTTP MCP client requires 'url' field".to_string()))?;
+
+        debug!("Creating HTTP connection to: {}", url);
+
+        // Warn if headers are configured since StreamableHttpClientTransport::from_uri doesn't support them
+        if !self.config.headers.is_empty() {
+            warn!(
+                "HTTP transport does not currently support custom headers. Headers will be ignored: {:?}",
+                self.config.headers.keys().collect::<Vec<_>>()
+            );
+        }
+
+        // Note: StreamableHttpClientTransport::from_uri doesn't support custom headers
+        // This is a limitation of the current rmcp API for this transport type
+        let transport = StreamableHttpClientTransport::from_uri(url.clone());
+
+        // Create client info for MCP protocol compliance
+        let client_info = ClientInfo {
+            protocol_version: Default::default(),
+            capabilities: ClientCapabilities::default(),
+            client_info: Implementation {
+                name: "jarvis-rust".to_string(),
+                version: "0.1.0".to_string(),
+            },
+        };
+
+        let peer = client_info
+            .serve(transport)
+            .await
+            .map_err(|e| Error::mcp(format!("Failed to serve HTTP rmcp service: {}", e)))?;
+
+        info!("Successfully created HTTP rmcp service for: {}", self.name);
 
         // Store the peer for later use
         self.peer = Some(peer);
