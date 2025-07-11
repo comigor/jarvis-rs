@@ -1,8 +1,8 @@
-use crate::{config::LlmConfig, Error, Result};
 use super::types::*;
+use crate::{config::LlmConfig, Result};
 use async_openai::{config::OpenAIConfig, types as openai_types, Client};
 use async_trait::async_trait;
-use tracing::{debug, info};
+use tracing::debug;
 
 #[async_trait]
 pub trait LlmClient: Send + Sync {
@@ -19,8 +19,7 @@ pub struct OpenAiClient {
 
 impl OpenAiClient {
     pub fn new(config: LlmConfig) -> Self {
-        let mut openai_config = OpenAIConfig::new()
-            .with_api_key(config.api_key);
+        let mut openai_config = OpenAIConfig::new().with_api_key(config.api_key);
 
         if !config.base_url.is_empty() {
             openai_config = openai_config.with_api_base(config.base_url);
@@ -41,7 +40,10 @@ impl LlmClient for OpenAiClient {
         &self,
         request: ChatCompletionRequest,
     ) -> Result<ChatCompletionResponse> {
-        debug!("Creating chat completion with {} messages", request.messages.len());
+        debug!(
+            "Creating chat completion with {} messages",
+            request.messages.len()
+        );
 
         // Convert our types to OpenAI types
         let mut messages = Vec::new();
@@ -61,24 +63,28 @@ impl LlmClient for OpenAiClient {
             )
         };
 
-        let mut request_builder = openai_types::CreateChatCompletionRequestArgs::default()
+        let mut request_builder = openai_types::CreateChatCompletionRequestArgs::default();
+        request_builder
             .model(&self.model)
             .messages(messages)
             .temperature(request.temperature.unwrap_or(0.7));
 
         if let Some(tools) = tools {
-            request_builder = request_builder.tools(tools);
+            request_builder.tools(tools);
         }
 
         if let Some(max_tokens) = request.max_tokens {
-            request_builder = request_builder.max_tokens(max_tokens as u32);
+            request_builder.max_tokens(max_tokens as u32);
         }
 
         let openai_request = request_builder.build()?;
 
         let response = self.client.chat().create(openai_request).await?;
 
-        debug!("Received chat completion response with {} choices", response.choices.len());
+        debug!(
+            "Received chat completion response with {} choices",
+            response.choices.len()
+        );
 
         // Convert OpenAI response to our types
         let choices: Vec<Choice> = response

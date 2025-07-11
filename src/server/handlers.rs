@@ -1,10 +1,6 @@
-use crate::{agent::Agent, history::HistoryStorage};
 use super::types::{ErrorResponse, InferenceRequest, InferenceResponse};
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::Json,
-};
+use crate::{agent::Agent, history::HistoryStorage};
+use axum::{extract::State, http::StatusCode, response::Json};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{error, info};
@@ -23,20 +19,25 @@ pub async fn inference(
     info!("Received inference request for input: {}", request.input);
 
     // Generate session ID if not provided
-    let session_id = request.session_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+    let session_id = request
+        .session_id
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
 
     // Process the request through the agent
     let mut agent = state.agent.lock().await;
-    match agent.process(&session_id, &request.input, &state.history).await {
+    match agent
+        .process(&session_id, &request.input, &state.history)
+        .await
+    {
         Ok(output) => {
             info!("Successfully processed request for session: {}", session_id);
-            Ok(Json(InferenceResponse {
-                session_id,
-                output,
-            }))
+            Ok(Json(InferenceResponse { session_id, output }))
         }
         Err(e) => {
-            error!("Failed to process request for session {}: {}", session_id, e);
+            error!(
+                "Failed to process request for session {}: {}",
+                session_id, e
+            );
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {

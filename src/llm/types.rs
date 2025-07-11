@@ -1,10 +1,9 @@
 use async_openai::types::{
+    ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestAssistantMessageContent,
     ChatCompletionRequestMessage, ChatCompletionRequestSystemMessageArgs,
-    ChatCompletionRequestUserMessageArgs, ChatCompletionRequestAssistantMessageArgs,
-    ChatCompletionRequestToolMessageArgs, CreateChatCompletionRequestArgs,
-    CreateChatCompletionResponse, ChatCompletionTool, FunctionObject,
-    ChatCompletionRequestSystemMessageContent, ChatCompletionRequestUserMessageContent,
-    ChatCompletionRequestAssistantMessageContent, ChatCompletionRequestToolMessageContent,
+    ChatCompletionRequestSystemMessageContent, ChatCompletionRequestToolMessageArgs,
+    ChatCompletionRequestToolMessageContent, ChatCompletionRequestUserMessageArgs,
+    ChatCompletionRequestUserMessageContent, ChatCompletionTool, FunctionObject,
 };
 use serde::{Deserialize, Serialize};
 
@@ -79,53 +78,71 @@ impl ChatMessage {
         match self.role.as_str() {
             "system" => {
                 let msg = ChatCompletionRequestSystemMessageArgs::default()
-                    .content(ChatCompletionRequestSystemMessageContent::Text(self.content.clone()))
+                    .content(ChatCompletionRequestSystemMessageContent::Text(
+                        self.content.clone(),
+                    ))
                     .build()
-                    .map_err(|e| crate::Error::llm(format!("Failed to build system message: {}", e)))?;
+                    .map_err(|e| {
+                        crate::Error::llm(format!("Failed to build system message: {}", e))
+                    })?;
                 Ok(msg.into())
             }
             "user" => {
                 let mut builder = ChatCompletionRequestUserMessageArgs::default();
-                builder.content(ChatCompletionRequestUserMessageContent::Text(self.content.clone()));
+                builder.content(ChatCompletionRequestUserMessageContent::Text(
+                    self.content.clone(),
+                ));
                 if let Some(ref name) = self.name {
                     builder.name(name);
                 }
-                let msg = builder.build()
-                    .map_err(|e| crate::Error::llm(format!("Failed to build user message: {}", e)))?;
+                let msg = builder.build().map_err(|e| {
+                    crate::Error::llm(format!("Failed to build user message: {}", e))
+                })?;
                 Ok(msg.into())
             }
             "assistant" => {
                 let mut builder = ChatCompletionRequestAssistantMessageArgs::default();
                 if !self.content.is_empty() {
-                    builder.content(ChatCompletionRequestAssistantMessageContent::Text(self.content.clone()));
+                    builder.content(ChatCompletionRequestAssistantMessageContent::Text(
+                        self.content.clone(),
+                    ));
                 }
                 if let Some(ref tool_calls) = self.tool_calls {
-                    let openai_tool_calls: Vec<async_openai::types::ChatCompletionMessageToolCall> = 
-                        tool_calls.iter().map(|tc| {
-                            async_openai::types::ChatCompletionMessageToolCall {
+                    let openai_tool_calls: Vec<async_openai::types::ChatCompletionMessageToolCall> =
+                        tool_calls
+                            .iter()
+                            .map(|tc| async_openai::types::ChatCompletionMessageToolCall {
                                 id: tc.id.clone(),
                                 r#type: async_openai::types::ChatCompletionToolType::Function,
                                 function: async_openai::types::FunctionCall {
                                     name: tc.function.name.clone(),
                                     arguments: tc.function.arguments.clone(),
                                 },
-                            }
-                        }).collect();
+                            })
+                            .collect();
                     builder.tool_calls(openai_tool_calls);
                 }
-                let msg = builder.build()
-                    .map_err(|e| crate::Error::llm(format!("Failed to build assistant message: {}", e)))?;
+                let msg = builder.build().map_err(|e| {
+                    crate::Error::llm(format!("Failed to build assistant message: {}", e))
+                })?;
                 Ok(msg.into())
             }
             "tool" => {
                 let msg = ChatCompletionRequestToolMessageArgs::default()
-                    .content(ChatCompletionRequestToolMessageContent::Text(self.content.clone()))
+                    .content(ChatCompletionRequestToolMessageContent::Text(
+                        self.content.clone(),
+                    ))
                     .tool_call_id(self.tool_call_id.as_ref().unwrap_or(&String::new()))
                     .build()
-                    .map_err(|e| crate::Error::llm(format!("Failed to build tool message: {}", e)))?;
+                    .map_err(|e| {
+                        crate::Error::llm(format!("Failed to build tool message: {}", e))
+                    })?;
                 Ok(msg.into())
             }
-            _ => Err(crate::Error::llm(format!("Unknown message role: {}", self.role)))
+            _ => Err(crate::Error::llm(format!(
+                "Unknown message role: {}",
+                self.role
+            ))),
         }
     }
 }

@@ -1,9 +1,8 @@
-use crate::{Error, Result};
 use super::Message;
-use std::collections::HashMap;
+use crate::{Error, Result};
+use libsql::{Builder, Database};
 use std::sync::{Arc, Mutex};
 use tracing::{debug, info, warn};
-use libsql::{Builder, Connection, Database};
 
 pub struct HistoryStorage {
     db: Option<Database>,
@@ -24,7 +23,10 @@ impl HistoryStorage {
                 info!("Database initialized successfully: {}", db_path);
             }
             Err(e) => {
-                warn!("Database initialization failed, using in-memory fallback: {}", e);
+                warn!(
+                    "Database initialization failed, using in-memory fallback: {}",
+                    e
+                );
             }
         }
 
@@ -52,7 +54,8 @@ impl HistoryStorage {
             )
             "#,
             (),
-        ).await?;
+        )
+        .await?;
 
         self.db = Some(db);
         Ok(())
@@ -82,17 +85,20 @@ impl HistoryStorage {
         conn.execute(
             "INSERT INTO messages (session_id, role, content, created_at) VALUES (?, ?, ?, ?)",
             (
-                &message.session_id,
-                &message.role,
-                &message.content,
+                message.session_id.as_str(),
+                message.role.as_str(),
+                message.content.as_str(),
                 message.created_at.to_rfc3339(),
             ),
-        ).await?;
+        )
+        .await?;
         Ok(())
     }
 
     fn save_to_fallback(&self, message: Message) -> Result<()> {
-        let mut fallback = self.fallback.lock()
+        let mut fallback = self
+            .fallback
+            .lock()
             .map_err(|e| Error::internal(format!("Mutex lock failed: {}", e)))?;
         fallback.push(message);
         Ok(())
@@ -103,7 +109,11 @@ impl HistoryStorage {
         if let Some(ref db) = self.db {
             match self.list_from_db(db, session_id).await {
                 Ok(messages) => {
-                    debug!("Retrieved {} messages from database for session: {}", messages.len(), session_id);
+                    debug!(
+                        "Retrieved {} messages from database for session: {}",
+                        messages.len(),
+                        session_id
+                    );
                     return Ok(messages);
                 }
                 Err(e) => {
@@ -120,7 +130,7 @@ impl HistoryStorage {
         let conn = db.connect()?;
         let mut rows = conn.query(
             "SELECT id, session_id, role, content, created_at FROM messages WHERE session_id = ? ORDER BY id ASC",
-            (session_id,)
+            [session_id]
         ).await?;
 
         let mut messages = Vec::new();
@@ -144,16 +154,22 @@ impl HistoryStorage {
     }
 
     fn list_from_fallback(&self, session_id: &str) -> Result<Vec<Message>> {
-        let fallback = self.fallback.lock()
+        let fallback = self
+            .fallback
+            .lock()
             .map_err(|e| Error::internal(format!("Mutex lock failed: {}", e)))?;
-        
+
         let messages: Vec<Message> = fallback
             .iter()
             .filter(|msg| msg.session_id == session_id)
             .cloned()
             .collect();
 
-        debug!("Retrieved {} messages from fallback for session: {}", messages.len(), session_id);
+        debug!(
+            "Retrieved {} messages from fallback for session: {}",
+            messages.len(),
+            session_id
+        );
         Ok(messages)
     }
 }

@@ -66,13 +66,19 @@ impl Clone for Error {
             Self::Llm(s) => Self::Llm(s.clone()),
             Self::Mcp(s) => Self::Mcp(s.clone()),
             Self::Fsm(s) => Self::Fsm(s.clone()),
-            Self::InvalidTransition { current, requested } => Self::InvalidTransition { 
-                current: current.clone(), 
-                requested: requested.clone() 
+            Self::InvalidTransition { current, requested } => Self::InvalidTransition {
+                current: current.clone(),
+                requested: requested.clone(),
             },
-            Self::MaxTurnsExceeded { max_turns } => Self::MaxTurnsExceeded { max_turns: *max_turns },
-            Self::ToolNotFound { tool_name } => Self::ToolNotFound { tool_name: tool_name.clone() },
-            Self::SessionNotFound { session_id } => Self::SessionNotFound { session_id: session_id.clone() },
+            Self::MaxTurnsExceeded { max_turns } => Self::MaxTurnsExceeded {
+                max_turns: *max_turns,
+            },
+            Self::ToolNotFound { tool_name } => Self::ToolNotFound {
+                tool_name: tool_name.clone(),
+            },
+            Self::SessionNotFound { session_id } => Self::SessionNotFound {
+                session_id: session_id.clone(),
+            },
             Self::Internal(s) => Self::Internal(s.clone()),
             // For errors that can't be cloned, convert to string representation
             Self::Database(e) => Self::Internal(format!("Database error: {}", e)),

@@ -2,12 +2,11 @@ use super::client::*;
 use crate::{config::McpServerConfig, Error, Result};
 use async_trait::async_trait;
 use serde_json::{json, Value};
-use std::collections::HashMap;
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
-use tracing::{debug, error, warn};
+use tracing::{debug, warn};
 
 pub struct StdioMcpClient {
     process: Mutex<Option<Child>>,
@@ -17,9 +16,9 @@ pub struct StdioMcpClient {
 
 impl StdioMcpClient {
     pub async fn new(config: McpServerConfig) -> Result<Self> {
-        let command = config.command.ok_or_else(|| {
-            Error::mcp("stdio MCP client requires command field")
-        })?;
+        let command = config
+            .command
+            .ok_or_else(|| Error::mcp("stdio MCP client requires command field"))?;
 
         debug!("Creating stdio MCP client for: {}", config.name);
 
@@ -35,7 +34,10 @@ impl StdioMcpClient {
         }
 
         let process = cmd.spawn().map_err(|e| {
-            Error::mcp(format!("Failed to spawn MCP stdio process {}: {}", command, e))
+            Error::mcp(format!(
+                "Failed to spawn MCP stdio process {}: {}",
+                command, e
+            ))
         })?;
 
         Ok(Self {
@@ -54,46 +56,51 @@ impl StdioMcpClient {
         });
 
         let mut process_guard = self.process.lock().await;
-        let process = process_guard.as_mut().ok_or_else(|| {
-            Error::mcp("MCP stdio process not available")
-        })?;
+        let process = process_guard
+            .as_mut()
+            .ok_or_else(|| Error::mcp("MCP stdio process not available"))?;
 
-        let stdin = process.stdin.as_mut().ok_or_else(|| {
-            Error::mcp("Failed to get stdin for MCP stdio process")
-        })?;
+        let stdin = process
+            .stdin
+            .as_mut()
+            .ok_or_else(|| Error::mcp("Failed to get stdin for MCP stdio process"))?;
 
-        let stdout = process.stdout.as_mut().ok_or_else(|| {
-            Error::mcp("Failed to get stdout for MCP stdio process")
-        })?;
+        let stdout = process
+            .stdout
+            .as_mut()
+            .ok_or_else(|| Error::mcp("Failed to get stdout for MCP stdio process"))?;
 
         // Send request
         let request_line = format!("{}\n", serde_json::to_string(&request)?);
-        stdin.write_all(request_line.as_bytes()).await.map_err(|e| {
-            Error::mcp(format!("Failed to write to MCP stdio process: {}", e))
-        })?;
-        stdin.flush().await.map_err(|e| {
-            Error::mcp(format!("Failed to flush MCP stdio process stdin: {}", e))
-        })?;
+        stdin
+            .write_all(request_line.as_bytes())
+            .await
+            .map_err(|e| Error::mcp(format!("Failed to write to MCP stdio process: {}", e)))?;
+        stdin
+            .flush()
+            .await
+            .map_err(|e| Error::mcp(format!("Failed to flush MCP stdio process stdin: {}", e)))?;
 
         // Read response
         let mut reader = BufReader::new(stdout);
         let mut response_line = String::new();
-        reader.read_line(&mut response_line).await.map_err(|e| {
-            Error::mcp(format!("Failed to read from MCP stdio process: {}", e))
-        })?;
+        reader
+            .read_line(&mut response_line)
+            .await
+            .map_err(|e| Error::mcp(format!("Failed to read from MCP stdio process: {}", e)))?;
 
-        let response: Value = serde_json::from_str(&response_line).map_err(|e| {
-            Error::mcp(format!("Failed to parse MCP stdio response: {}", e))
-        })?;
+        let response: Value = serde_json::from_str(&response_line)
+            .map_err(|e| Error::mcp(format!("Failed to parse MCP stdio response: {}", e)))?;
 
         // Check for JSON-RPC error
         if let Some(error) = response.get("error") {
             return Err(Error::mcp(format!("MCP stdio error: {}", error)));
         }
 
-        response.get("result").cloned().ok_or_else(|| {
-            Error::mcp("MCP stdio response missing result field")
-        })
+        response
+            .get("result")
+            .cloned()
+            .ok_or_else(|| Error::mcp("MCP stdio response missing result field"))
     }
 }
 
@@ -101,13 +108,13 @@ impl StdioMcpClient {
 impl McpClient for StdioMcpClient {
     async fn initialize(&mut self, request: McpInitializeRequest) -> Result<McpInitializeResponse> {
         debug!("Initializing stdio MCP client: {}", self.name);
-        
+
         let params = serde_json::to_value(request)?;
         let result = self.send_request("initialize", params).await?;
-        
+
         let response: McpInitializeResponse = serde_json::from_value(result)?;
         self.initialized = true;
-        
+
         debug!("Successfully initialized stdio MCP client: {}", self.name);
         Ok(response)
     }
@@ -118,11 +125,12 @@ impl McpClient for StdioMcpClient {
         }
 
         debug!("Listing tools for stdio MCP client: {}", self.name);
-        
+
         let result = self.send_request("tools/list", json!({})).await?;
         let tools_response: Value = result;
-        
-        let tools = tools_response.get("tools")
+
+        let tools = tools_response
+            .get("tools")
             .and_then(|t| t.as_array())
             .ok_or_else(|| Error::mcp("Invalid tools list response"))?;
 
@@ -132,7 +140,11 @@ impl McpClient for StdioMcpClient {
             mcp_tools.push(mcp_tool);
         }
 
-        debug!("Found {} tools for stdio MCP client: {}", mcp_tools.len(), self.name);
+        debug!(
+            "Found {} tools for stdio MCP client: {}",
+            mcp_tools.len(),
+            self.name
+        );
         Ok(mcp_tools)
     }
 
@@ -141,11 +153,14 @@ impl McpClient for StdioMcpClient {
             return Err(Error::mcp("MCP client not initialized"));
         }
 
-        debug!("Calling tool '{}' for stdio MCP client: {}", request.name, self.name);
-        
+        debug!(
+            "Calling tool '{}' for stdio MCP client: {}",
+            request.name, self.name
+        );
+
         let params = serde_json::to_value(request)?;
         let result = self.send_request("tools/call", params).await?;
-        
+
         let response: McpToolCallResponse = serde_json::from_value(result)?;
         Ok(response)
     }
@@ -156,11 +171,12 @@ impl McpClient for StdioMcpClient {
         }
 
         debug!("Listing prompts for stdio MCP client: {}", self.name);
-        
+
         let result = self.send_request("prompts/list", json!({})).await?;
         let prompts_response: Value = result;
-        
-        let prompts = prompts_response.get("prompts")
+
+        let prompts = prompts_response
+            .get("prompts")
             .and_then(|p| p.as_array())
             .ok_or_else(|| Error::mcp("Invalid prompts list response"))?;
 
@@ -170,7 +186,11 @@ impl McpClient for StdioMcpClient {
             mcp_prompts.push(mcp_prompt);
         }
 
-        debug!("Found {} prompts for stdio MCP client: {}", mcp_prompts.len(), self.name);
+        debug!(
+            "Found {} prompts for stdio MCP client: {}",
+            mcp_prompts.len(),
+            self.name
+        );
         Ok(mcp_prompts)
     }
 
@@ -179,25 +199,28 @@ impl McpClient for StdioMcpClient {
             return Err(Error::mcp("MCP client not initialized"));
         }
 
-        debug!("Getting prompt '{}' for stdio MCP client: {}", request.name, self.name);
-        
+        debug!(
+            "Getting prompt '{}' for stdio MCP client: {}",
+            request.name, self.name
+        );
+
         let params = serde_json::to_value(request)?;
         let result = self.send_request("prompts/get", params).await?;
-        
+
         let response: McpGetPromptResponse = serde_json::from_value(result)?;
         Ok(response)
     }
 
     async fn close(&mut self) -> Result<()> {
         debug!("Closing stdio MCP client: {}", self.name);
-        
+
         let mut process_guard = self.process.lock().await;
         if let Some(mut process) = process_guard.take() {
             if let Err(e) = process.kill().await {
                 warn!("Failed to kill MCP stdio process {}: {}", self.name, e);
             }
         }
-        
+
         Ok(())
     }
 }

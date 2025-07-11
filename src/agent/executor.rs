@@ -1,17 +1,16 @@
+use super::fsm::{AgentEvent, AgentState, AgentStateMachine};
 use crate::{
     config::{LlmConfig, McpServerConfig},
     history::{HistoryStorage, Message},
-    llm::{ChatMessage, LlmClient, OpenAiClient, Tool, Function},
+    llm::{ChatMessage, Function, LlmClient, OpenAiClient, Tool},
     mcp::{
         create_mcp_client, McpClient, McpClientCapabilities, McpInitializeRequest,
         McpRootsCapability,
     },
     Error, Result,
 };
-use super::fsm::{AgentEvent, AgentState, AgentStateMachine};
 use std::collections::HashMap;
 use tracing::{debug, error, info, warn};
-use uuid::Uuid;
 
 pub struct Agent {
     llm_client: Box<dyn LlmClient>,
@@ -23,10 +22,7 @@ pub struct Agent {
 }
 
 impl Agent {
-    pub async fn new(
-        llm_config: LlmConfig,
-        mcp_configs: Vec<McpServerConfig>,
-    ) -> Result<Self> {
+    pub async fn new(llm_config: LlmConfig, mcp_configs: Vec<McpServerConfig>) -> Result<Self> {
         info!("Initializing agent with {} MCP servers", mcp_configs.len());
 
         // Initialize LLM client
@@ -39,7 +35,7 @@ impl Agent {
 
         for config in mcp_configs {
             match Self::initialize_mcp_client(config).await {
-                Ok((name, mut client, tools, prompts)) => {
+                Ok((name, client, tools, prompts)) => {
                     // Store tools
                     for tool in tools {
                         let llm_tool = Tool {
@@ -66,7 +62,7 @@ impl Agent {
             }
         }
 
-        let default_system_prompt = 
+        let default_system_prompt =
             "You are a helpful AI assistant. Please respond to the user's request accurately and concisely.".to_string();
 
         info!(
@@ -88,7 +84,12 @@ impl Agent {
 
     async fn initialize_mcp_client(
         config: McpServerConfig,
-    ) -> Result<(String, Box<dyn McpClient>, Vec<crate::mcp::McpTool>, Vec<String>)> {
+    ) -> Result<(
+        String,
+        Box<dyn McpClient>,
+        Vec<crate::mcp::McpTool>,
+        Vec<String>,
+    )> {
         debug!("Initializing MCP client: {}", config.name);
 
         let mut client = create_mcp_client(config.clone()).await?;
@@ -109,11 +110,18 @@ impl Agent {
         // Discover tools
         let tools = match client.list_tools().await {
             Ok(tools) => {
-                debug!("Discovered {} tools from MCP client '{}'", tools.len(), config.name);
+                debug!(
+                    "Discovered {} tools from MCP client '{}'",
+                    tools.len(),
+                    config.name
+                );
                 tools
             }
             Err(e) => {
-                warn!("Failed to list tools from MCP client '{}': {}", config.name, e);
+                warn!(
+                    "Failed to list tools from MCP client '{}': {}",
+                    config.name, e
+                );
                 Vec::new()
             }
         };
@@ -137,7 +145,9 @@ impl Agent {
                                     // Look for assistant messages in the prompt
                                     for message in prompt_response.messages {
                                         if message.role == "assistant" {
-                                            if let crate::mcp::McpContent::Text { text } = message.content {
+                                            if let crate::mcp::McpContent::Text { text } =
+                                                message.content
+                                            {
                                                 prompts.push(text);
                                                 info!("Discovered system prompt from MCP client '{}': {}", config.name, prompt.name);
                                                 break;
@@ -146,14 +156,20 @@ impl Agent {
                                     }
                                 }
                                 Err(e) => {
-                                    warn!("Failed to get prompt '{}' from MCP client '{}': {}", prompt.name, config.name, e);
+                                    warn!(
+                                        "Failed to get prompt '{}' from MCP client '{}': {}",
+                                        prompt.name, config.name, e
+                                    );
                                 }
                             }
                         }
                     }
                 }
                 Err(e) => {
-                    warn!("Failed to list prompts from MCP client '{}': {}", config.name, e);
+                    warn!(
+                        "Failed to list prompts from MCP client '{}': {}",
+                        config.name, e
+                    );
                 }
             }
         }
@@ -174,7 +190,10 @@ impl Agent {
 
         // Retrieve message history
         let previous_messages = history.list(session_id).await?;
-        debug!("Retrieved {} previous messages for session", previous_messages.len());
+        debug!(
+            "Retrieved {} previous messages for session",
+            previous_messages.len()
+        );
 
         // Build initial messages
         let mut messages = Vec::new();
@@ -224,7 +243,7 @@ impl Agent {
         );
 
         // Process through FSM until terminal state
-        let mut result = self.run_fsm_loop(&mut fsm).await?;
+        let result = self.run_fsm_loop(&mut fsm).await?;
 
         // Save assistant response to history
         let assistant_message = Message::assistant(session_id.to_string(), result.clone());
@@ -235,7 +254,8 @@ impl Agent {
 
     async fn run_fsm_loop(&mut self, fsm: &mut AgentStateMachine) -> Result<String> {
         // Initial event to start processing
-        fsm.process_event(AgentEvent::ProcessInput, self.llm_client.as_ref()).await?;
+        fsm.process_event(AgentEvent::ProcessInput, Some(self.llm_client.as_ref()))
+            .await?;
 
         // Main FSM loop
         while !fsm.is_terminal() {
@@ -245,10 +265,20 @@ impl Agent {
                     if let Some(ref response) = &fsm.context.llm_response {
                         if !response.choices.is_empty() {
                             let choice = &response.choices[0];
-                            if choice.message.tool_calls.is_some() && !choice.message.tool_calls.as_ref().unwrap().is_empty() {
-                                fsm.process_event(AgentEvent::LlmRequestedTools, self.llm_client.as_ref()).await?;
+                            if choice.message.tool_calls.is_some()
+                                && !choice.message.tool_calls.as_ref().unwrap().is_empty()
+                            {
+                                fsm.process_event(
+                                    AgentEvent::LlmRequestedTools,
+                                    Some(self.llm_client.as_ref()),
+                                )
+                                .await?;
                             } else {
-                                fsm.process_event(AgentEvent::LlmRespondedWithContent, self.llm_client.as_ref()).await?;
+                                fsm.process_event(
+                                    AgentEvent::LlmRespondedWithContent,
+                                    Some(self.llm_client.as_ref()),
+                                )
+                                .await?;
                             }
                         }
                     }
@@ -256,23 +286,28 @@ impl Agent {
                 AgentState::ExecutingTools => {
                     // Prepare tool execution
                     let tool_calls = fsm.prepare_tool_execution();
-                    
+
                     // Execute tools
                     let mut results = Vec::new();
                     for tool_call in &tool_calls {
-                        let result = self.execute_tool(tool_call).await;
-                        results.push((tool_call.id.clone(), result));
+                        let result = self.execute_mcp_tool(tool_call).await;
+                        results.push(result);
                     }
-                    
+
                     // Add results back to FSM
                     fsm.add_tool_execution_results(results);
-                    
+
                     // Continue with tools execution completed
-                    fsm.process_event(AgentEvent::ToolsExecutionCompleted, self.llm_client.as_ref()).await?;
+                    fsm.process_event(
+                        AgentEvent::ToolsExecutionCompleted,
+                        Some(self.llm_client.as_ref()),
+                    )
+                    .await?;
                 }
                 AgentState::ReadyToCallLlm => {
                     // Make another LLM call
-                    fsm.process_event(AgentEvent::ProcessInput, self.llm_client.as_ref()).await?;
+                    fsm.process_event(AgentEvent::ProcessInput, Some(self.llm_client.as_ref()))
+                        .await?;
                 }
                 _ => {
                     break;
@@ -285,9 +320,11 @@ impl Agent {
             AgentState::Done => Ok(fsm.get_final_content().to_string()),
             AgentState::Error => {
                 if let Some(error) = fsm.get_last_error() {
-                    Err(error.clone())
+                    Err(Error::internal(error))
                 } else {
-                    Err(Error::internal("FSM ended in error state without specific error"))
+                    Err(Error::internal(
+                        "FSM ended in error state without specific error",
+                    ))
                 }
             }
             _ => Err(Error::internal(format!(
@@ -301,7 +338,9 @@ impl Agent {
         let mut prompt_parts = Vec::new();
 
         // Start with base system prompt
-        let base = self.base_system_prompt.as_ref()
+        let base = self
+            .base_system_prompt
+            .as_ref()
             .unwrap_or(&self.default_system_prompt);
         prompt_parts.push(base.clone());
 
@@ -313,48 +352,35 @@ impl Agent {
         prompt_parts.join("\n\n")
     }
 
-    async fn execute_tool(&mut self, tool_call: &crate::llm::ToolCall) -> String {
-        debug!("Executing tool: {}", tool_call.function.name);
-
-        // Parse tool arguments
-        let arguments: HashMap<String, serde_json::Value> = match serde_json::from_str(&tool_call.function.arguments) {
-            Ok(args) => args,
-            Err(e) => {
-                error!("Failed to parse tool arguments: {}", e);
-                return format!("Error: Could not parse arguments for tool {}: {}", tool_call.function.name, e);
-            }
-        };
+    async fn execute_mcp_tool(
+        &mut self,
+        tool_call: &crate::mcp::McpToolCallRequest,
+    ) -> crate::mcp::McpToolCallResponse {
+        debug!("Executing MCP tool: {}", tool_call.name);
 
         // Find the appropriate MCP client
         // For now, just use the first available client
         if let Some((_, client)) = self.mcp_clients.iter_mut().next() {
-            let request = crate::mcp::McpToolCallRequest {
-                name: tool_call.function.name.clone(),
-                arguments,
-            };
-
-            match client.call_tool(request).await {
-                Ok(response) => {
-                    if response.is_error {
-                        warn!("MCP tool execution failed: {:?}", response.content);
-                    }
-
-                    // Extract text content from response
-                    for content in response.content {
-                        if let crate::mcp::McpContent::Text { text } = content {
-                            return text;
-                        }
-                    }
-
-                    "Tool executed successfully, but no text content returned".to_string()
-                }
+            match client.call_tool(tool_call.clone()).await {
+                Ok(response) => response,
                 Err(e) => {
-                    error!("MCP tool call failed: {}", e);
-                    format!("Error executing tool {}: {}", tool_call.function.name, e)
+                    error!("MCP tool execution failed: {}", e);
+                    crate::mcp::McpToolCallResponse {
+                        content: vec![crate::mcp::McpContent::Text {
+                            text: format!("Error: Tool execution failed: {}", e),
+                        }],
+                        is_error: true,
+                    }
                 }
             }
         } else {
-            format!("Error: No MCP client available for tool {}", tool_call.function.name)
+            error!("No MCP client available");
+            crate::mcp::McpToolCallResponse {
+                content: vec![crate::mcp::McpContent::Text {
+                    text: "Error: No MCP client available".to_string(),
+                }],
+                is_error: true,
+            }
         }
     }
 }

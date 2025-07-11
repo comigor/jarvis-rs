@@ -3,7 +3,7 @@ use crate::{config::McpServerConfig, Error, Result};
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use tracing::{debug, warn};
+use tracing::debug;
 
 pub struct SseMcpClient {
     base_url: String,
@@ -15,9 +15,9 @@ pub struct SseMcpClient {
 
 impl SseMcpClient {
     pub async fn new(config: McpServerConfig) -> Result<Self> {
-        let base_url = config.url.ok_or_else(|| {
-            Error::mcp("SSE MCP client requires URL field")
-        })?;
+        let base_url = config
+            .url
+            .ok_or_else(|| Error::mcp("SSE MCP client requires URL field"))?;
 
         debug!("Creating SSE MCP client for: {}", config.name);
 
@@ -40,31 +40,32 @@ impl SseMcpClient {
             "params": params
         });
 
-        let mut req_builder = self.client
-            .post(&self.base_url)
-            .json(&request);
+        let mut req_builder = self.client.post(&self.base_url).json(&request);
 
         // Add custom headers
         for (key, value) in &self.headers {
             req_builder = req_builder.header(key, value);
         }
 
-        let response = req_builder.send().await.map_err(|e| {
-            Error::mcp(format!("Failed to send SSE MCP request: {}", e))
-        })?;
+        let response = req_builder
+            .send()
+            .await
+            .map_err(|e| Error::mcp(format!("Failed to send SSE MCP request: {}", e)))?;
 
-        let response_json: Value = response.json().await.map_err(|e| {
-            Error::mcp(format!("Failed to parse SSE MCP response: {}", e))
-        })?;
+        let response_json: Value = response
+            .json()
+            .await
+            .map_err(|e| Error::mcp(format!("Failed to parse SSE MCP response: {}", e)))?;
 
         // Check for JSON-RPC error
         if let Some(error) = response_json.get("error") {
             return Err(Error::mcp(format!("SSE MCP error: {}", error)));
         }
 
-        response_json.get("result").cloned().ok_or_else(|| {
-            Error::mcp("SSE MCP response missing result field")
-        })
+        response_json
+            .get("result")
+            .cloned()
+            .ok_or_else(|| Error::mcp("SSE MCP response missing result field"))
     }
 }
 
@@ -72,13 +73,13 @@ impl SseMcpClient {
 impl McpClient for SseMcpClient {
     async fn initialize(&mut self, request: McpInitializeRequest) -> Result<McpInitializeResponse> {
         debug!("Initializing SSE MCP client: {}", self.name);
-        
+
         let params = serde_json::to_value(request)?;
         let result = self.send_request("initialize", params).await?;
-        
+
         let response: McpInitializeResponse = serde_json::from_value(result)?;
         self.initialized = true;
-        
+
         debug!("Successfully initialized SSE MCP client: {}", self.name);
         Ok(response)
     }
@@ -89,11 +90,12 @@ impl McpClient for SseMcpClient {
         }
 
         debug!("Listing tools for SSE MCP client: {}", self.name);
-        
+
         let result = self.send_request("tools/list", json!({})).await?;
         let tools_response: Value = result;
-        
-        let tools = tools_response.get("tools")
+
+        let tools = tools_response
+            .get("tools")
             .and_then(|t| t.as_array())
             .ok_or_else(|| Error::mcp("Invalid tools list response"))?;
 
@@ -103,7 +105,11 @@ impl McpClient for SseMcpClient {
             mcp_tools.push(mcp_tool);
         }
 
-        debug!("Found {} tools for SSE MCP client: {}", mcp_tools.len(), self.name);
+        debug!(
+            "Found {} tools for SSE MCP client: {}",
+            mcp_tools.len(),
+            self.name
+        );
         Ok(mcp_tools)
     }
 
@@ -112,11 +118,14 @@ impl McpClient for SseMcpClient {
             return Err(Error::mcp("MCP client not initialized"));
         }
 
-        debug!("Calling tool '{}' for SSE MCP client: {}", request.name, self.name);
-        
+        debug!(
+            "Calling tool '{}' for SSE MCP client: {}",
+            request.name, self.name
+        );
+
         let params = serde_json::to_value(request)?;
         let result = self.send_request("tools/call", params).await?;
-        
+
         let response: McpToolCallResponse = serde_json::from_value(result)?;
         Ok(response)
     }
@@ -127,11 +136,12 @@ impl McpClient for SseMcpClient {
         }
 
         debug!("Listing prompts for SSE MCP client: {}", self.name);
-        
+
         let result = self.send_request("prompts/list", json!({})).await?;
         let prompts_response: Value = result;
-        
-        let prompts = prompts_response.get("prompts")
+
+        let prompts = prompts_response
+            .get("prompts")
             .and_then(|p| p.as_array())
             .ok_or_else(|| Error::mcp("Invalid prompts list response"))?;
 
@@ -141,7 +151,11 @@ impl McpClient for SseMcpClient {
             mcp_prompts.push(mcp_prompt);
         }
 
-        debug!("Found {} prompts for SSE MCP client: {}", mcp_prompts.len(), self.name);
+        debug!(
+            "Found {} prompts for SSE MCP client: {}",
+            mcp_prompts.len(),
+            self.name
+        );
         Ok(mcp_prompts)
     }
 
@@ -150,11 +164,14 @@ impl McpClient for SseMcpClient {
             return Err(Error::mcp("MCP client not initialized"));
         }
 
-        debug!("Getting prompt '{}' for SSE MCP client: {}", request.name, self.name);
-        
+        debug!(
+            "Getting prompt '{}' for SSE MCP client: {}",
+            request.name, self.name
+        );
+
         let params = serde_json::to_value(request)?;
         let result = self.send_request("prompts/get", params).await?;
-        
+
         let response: McpGetPromptResponse = serde_json::from_value(result)?;
         Ok(response)
     }
