@@ -13,7 +13,8 @@
       "WebFetch(domain:docs.rs)",
       "WebFetch(domain:gist.github.com)",
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:hackmd.io)"
+      "WebFetch(domain:hackmd.io)",
+      "Bash(mkdir:*)"
     ],
     "deny": []
   }

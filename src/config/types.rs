@@ -59,6 +59,7 @@ pub struct McpServerConfig {
 pub enum McpClientType {
     Sse,
     StreamableHttp,
+    Http,
     Stdio,
 }
 
@@ -70,22 +71,22 @@ impl Default for LogsConfig {
     }
 }
 
-fn default_provider() -> String {
+pub fn default_provider() -> String {
     "openai".to_string()
 }
 
-fn default_host() -> String {
+pub fn default_host() -> String {
     "0.0.0.0".to_string()
 }
 
-fn default_port() -> u16 {
+pub fn default_port() -> u16 {
     8080
 }
 
-fn default_log_level() -> String {
+pub fn default_log_level() -> String {
     "info".to_string()
 }
 
-fn default_database_path() -> String {
+pub fn default_database_path() -> String {
     "history.db".to_string()
 }

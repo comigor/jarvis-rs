@@ -47,6 +47,7 @@ impl RmcpClient {
             crate::config::McpClientType::Stdio => self.initialize_stdio_service().await,
             crate::config::McpClientType::Sse => self.initialize_sse_service().await,
             crate::config::McpClientType::StreamableHttp => self.initialize_http_service().await,
+            crate::config::McpClientType::Http => self.initialize_http_service().await,
         }
     }
 

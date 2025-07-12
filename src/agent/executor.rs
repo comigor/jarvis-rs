@@ -329,7 +329,7 @@ impl Agent {
                     }
 
                     // Process the LLM response
-                    if let Some(ref response) = &fsm.context.llm_response {
+                    if let Some(response) = &fsm.context.llm_response {
                         if !response.choices.is_empty() {
                             let choice = &response.choices[0];
                             if choice.message.tool_calls.is_some()

@@ -19,6 +19,7 @@ pub struct ChatMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCall {
     pub id: String,
+    pub call_type: String,
     pub function: FunctionCall,
 }
 
@@ -27,6 +28,8 @@ pub struct FunctionCall {
     pub name: String,
     pub arguments: String,
 }
+
+// Function is defined locally
 
 #[derive(Debug, Clone)]
 pub struct ChatCompletionRequest {
@@ -40,6 +43,8 @@ pub struct ChatCompletionRequest {
 #[derive(Debug, Clone)]
 pub struct ChatCompletionResponse {
     pub id: String,
+    pub object: String,
+    pub created: u64,
     pub model: String,
     pub choices: Vec<Choice>,
     pub usage: Option<Usage>,
@@ -51,6 +56,8 @@ pub struct Choice {
     pub message: ChatMessage,
     pub finish_reason: Option<String>,
 }
+
+pub type ChatCompletionChoice = Choice;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Usage {

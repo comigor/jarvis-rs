@@ -1,4 +1,4 @@
-mod handlers;
+pub mod handlers;
 mod types;
 
 use crate::{agent::Agent, config::Config, history::HistoryStorage, Result};

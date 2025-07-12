@@ -1,9 +1,10 @@
 [package]
 name = "jarvis-rust"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 authors = ["Igor <igor@example.com>"]
 description = "Smart-home agent server written in Rust"
+rust-version = "1.88"
 
 [[bin]]
 name = "jarvis"
@@ -48,3 +49,9 @@ rmcp = { version = "0.2.0", features = ["server", "client", "transport-child-pro
 [dev-dependencies]
 tempfile = "3.0"
 mockall = "0.12"
+tokio-test = "0.4"
+wiremock = "0.6"
+pretty_assertions = "1.4"
+rstest = "0.19"
+test-log = "0.2"
+axum-test = "14.0"

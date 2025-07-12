@@ -115,3 +115,114 @@ impl Error {
         Self::Internal(msg.into())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn test_error_construction() {
+        let config_err = Error::config("Invalid config");
+        assert_eq!(config_err.to_string(), "Configuration error: Invalid config");
+
+        let llm_err = Error::llm("LLM failed");
+        assert_eq!(llm_err.to_string(), "LLM error: LLM failed");
+
+        let mcp_err = Error::mcp("MCP connection failed");
+        assert_eq!(mcp_err.to_string(), "MCP error: MCP connection failed");
+
+        let fsm_err = Error::fsm("Invalid state transition");
+        assert_eq!(fsm_err.to_string(), "FSM error: Invalid state transition");
+
+        let internal_err = Error::internal("Internal server error");
+        assert_eq!(internal_err.to_string(), "Internal error: Internal server error");
+    }
+
+    #[test]
+    fn test_error_variants() {
+        let invalid_transition = Error::InvalidTransition {
+            current: "Ready".to_string(),
+            requested: "Invalid".to_string(),
+        };
+        assert_eq!(
+            invalid_transition.to_string(),
+            "Invalid state transition: Ready -> Invalid"
+        );
+
+        let max_turns = Error::MaxTurnsExceeded { max_turns: 5 };
+        assert_eq!(max_turns.to_string(), "Max interaction turns exceeded: 5");
+
+        let tool_not_found = Error::ToolNotFound {
+            tool_name: "weather_tool".to_string(),
+        };
+        assert_eq!(tool_not_found.to_string(), "Tool not found: weather_tool");
+
+        let session_not_found = Error::SessionNotFound {
+            session_id: "session-123".to_string(),
+        };
+        assert_eq!(session_not_found.to_string(), "Session not found: session-123");
+    }
+
+    #[test]
+    fn test_error_from_conversions() {
+        // Test std::io::Error conversion
+        let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "File not found");
+        let jarvis_error: Error = io_error.into();
+        assert!(jarvis_error.to_string().contains("IO error"));
+
+        // Test serde_json::Error conversion
+        let json_error: serde_json::Error = serde_json::from_str::<serde_json::Value>("invalid json").unwrap_err();
+        let jarvis_error: Error = json_error.into();
+        assert!(jarvis_error.to_string().contains("Serialization error"));
+
+        // Test std::net::AddrParseError conversion
+        let addr_error = "invalid-address".parse::<std::net::IpAddr>().unwrap_err();
+        let jarvis_error: Error = addr_error.into();
+        assert!(jarvis_error.to_string().contains("Address parse error"));
+    }
+
+    #[test]
+    fn test_error_clone() {
+        let original = Error::config("Test config error");
+        let cloned = original.clone();
+        assert_eq!(original.to_string(), cloned.to_string());
+
+        let original = Error::InvalidTransition {
+            current: "State1".to_string(),
+            requested: "State2".to_string(),
+        };
+        let cloned = original.clone();
+        assert_eq!(original.to_string(), cloned.to_string());
+
+        let original = Error::MaxTurnsExceeded { max_turns: 10 };
+        let cloned = original.clone();
+        assert_eq!(original.to_string(), cloned.to_string());
+    }
+
+    #[test]
+    fn test_error_clone_with_non_cloneable_types() {
+        // Test cloning errors that can't be directly cloned
+        let io_error = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "Access denied");
+        let jarvis_error: Error = io_error.into();
+        let cloned = jarvis_error.clone();
+        
+        // Should be converted to Internal error with string representation
+        assert!(cloned.to_string().contains("Internal error"));
+        assert!(cloned.to_string().contains("IO error"));
+    }
+
+    #[test]
+    fn test_result_type() {
+        fn test_function() -> Result<String> {
+            Ok("success".to_string())
+        }
+
+        fn test_error_function() -> Result<String> {
+            Err(Error::internal("test error"))
+        }
+
+        assert!(test_function().is_ok());
+        assert!(test_error_function().is_err());
+    }
+}
