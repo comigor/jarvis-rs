@@ -16,6 +16,7 @@ pub struct Agent {
     llm_client: Box<dyn LlmClient>,
     mcp_clients: HashMap<String, Box<dyn McpClient>>,
     available_tools: Vec<Tool>,
+    tool_to_client_map: HashMap<String, String>, // Maps tool_name -> client_name
     discovered_prompts: Vec<String>,
     default_system_prompt: String,
     base_system_prompt: Option<String>,
@@ -31,17 +32,31 @@ impl Agent {
         // Initialize MCP clients
         let mut mcp_clients = HashMap::new();
         let mut available_tools = Vec::new();
+        let mut tool_to_client_map = HashMap::new();
         let mut discovered_prompts = Vec::new();
 
         for config in mcp_configs {
             match Self::initialize_mcp_client(config).await {
                 Ok((name, client, tools, prompts)) => {
-                    // Store tools
+                    // Store tools and create tool-to-client mapping
                     for tool in tools {
+                        let tool_name = tool.name.clone();
+                        
+                        // Check for tool name conflicts
+                        if let Some(existing_client) = tool_to_client_map.get(&tool_name) {
+                            warn!(
+                                "Tool name conflict: '{}' exists in both '{}' and '{}' clients. Using '{}'",
+                                tool_name, existing_client, name, name
+                            );
+                        }
+                        
+                        // Map tool name to client name
+                        tool_to_client_map.insert(tool_name.clone(), name.clone());
+                        
                         let llm_tool = Tool {
                             tool_type: "function".to_string(),
                             function: Function {
-                                name: tool.name.clone(),
+                                name: tool_name,
                                 description: tool.description,
                                 parameters: tool.input_schema,
                             },
@@ -66,9 +81,10 @@ impl Agent {
             "You are a helpful AI assistant. Please respond to the user's request accurately and concisely.".to_string();
 
         info!(
-            "Agent initialized with {} MCP clients, {} tools, {} discovered prompts",
+            "Agent initialized with {} MCP clients, {} tools ({} mappings), {} discovered prompts",
             mcp_clients.len(),
             available_tools.len(),
+            tool_to_client_map.len(),
             discovered_prompts.len()
         );
 
@@ -76,6 +92,7 @@ impl Agent {
             llm_client,
             mcp_clients,
             available_tools,
+            tool_to_client_map,
             discovered_prompts,
             default_system_prompt,
             base_system_prompt: llm_config.system_prompt,
@@ -571,28 +588,69 @@ impl Agent {
     ) -> crate::mcp::McpToolCallResponse {
         debug!("Executing MCP tool: {}", tool_call.name);
 
-        // Find the appropriate MCP client
-        // For now, just use the first available client
-        if let Some((_, client)) = self.mcp_clients.iter_mut().next() {
-            match client.call_tool(tool_call.clone()).await {
-                Ok(response) => response,
-                Err(e) => {
-                    error!("MCP tool execution failed: {}", e);
-                    crate::mcp::McpToolCallResponse {
-                        content: vec![crate::mcp::McpContent::Text {
-                            text: format!("Error: Tool execution failed: {}", e),
-                        }],
-                        is_error: true,
+        // Find the appropriate MCP client using the tool-to-client mapping
+        match self.tool_to_client_map.get(&tool_call.name) {
+            Some(client_name) => {
+                debug!("Tool '{}' mapped to client '{}'", tool_call.name, client_name);
+                
+                match self.mcp_clients.get_mut(client_name) {
+                    Some(client) => {
+                        debug!("Executing tool '{}' on client '{}'", tool_call.name, client_name);
+                        match client.call_tool(tool_call.clone()).await {
+                            Ok(response) => {
+                                debug!(
+                                    "Tool '{}' executed successfully on client '{}' with {} content items",
+                                    tool_call.name, client_name, response.content.len()
+                                );
+                                response
+                            }
+                            Err(e) => {
+                                error!(
+                                    "Tool '{}' execution failed on client '{}': {}",
+                                    tool_call.name, client_name, e
+                                );
+                                crate::mcp::McpToolCallResponse {
+                                    content: vec![crate::mcp::McpContent::Text {
+                                        text: format!("Error: Tool execution failed: {}", e),
+                                    }],
+                                    is_error: true,
+                                }
+                            }
+                        }
+                    }
+                    None => {
+                        error!(
+                            "Client '{}' for tool '{}' is no longer available",
+                            client_name, tool_call.name
+                        );
+                        crate::mcp::McpToolCallResponse {
+                            content: vec![crate::mcp::McpContent::Text {
+                                text: format!(
+                                    "Error: Client '{}' for tool '{}' is no longer available",
+                                    client_name, tool_call.name
+                                ),
+                            }],
+                            is_error: true,
+                        }
                     }
                 }
             }
-        } else {
-            error!("No MCP client available");
-            crate::mcp::McpToolCallResponse {
-                content: vec![crate::mcp::McpContent::Text {
-                    text: "Error: No MCP client available".to_string(),
-                }],
-                is_error: true,
+            None => {
+                error!("No client mapping found for tool: '{}'", tool_call.name);
+                warn!(
+                    "Available tools: {:?}",
+                    self.tool_to_client_map.keys().collect::<Vec<_>>()
+                );
+                crate::mcp::McpToolCallResponse {
+                    content: vec![crate::mcp::McpContent::Text {
+                        text: format!(
+                            "Error: No client mapping found for tool: '{}'. Available tools: {}",
+                            tool_call.name,
+                            self.tool_to_client_map.keys().cloned().collect::<Vec<_>>().join(", ")
+                        ),
+                    }],
+                    is_error: true,
+                }
             }
         }
     }

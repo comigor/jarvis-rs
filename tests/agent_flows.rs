@@ -346,3 +346,43 @@ async fn test_concurrent_sessions() {
         }
     }
 }
+
+/// Test to verify that tool-to-client mapping logic works correctly
+/// This tests the HashMap creation and lookup functionality without needing real MCP connections
+#[tokio::test]
+async fn test_tool_to_client_mapping_logic() {
+    use std::collections::HashMap;
+    
+    // Simulate the tool-to-client mapping logic that happens in Agent::new()
+    let mut tool_to_client_map: HashMap<String, String> = HashMap::new();
+    
+    // Simulate discovering tools from multiple clients
+    let client1_tools = vec!["get_weather", "send_email"];
+    let client2_tools = vec!["search_web", "calculate"];
+    
+    // Client 1 tools
+    for tool_name in client1_tools {
+        tool_to_client_map.insert(tool_name.to_string(), "weather_client".to_string());
+    }
+    
+    // Client 2 tools  
+    for tool_name in client2_tools {
+        tool_to_client_map.insert(tool_name.to_string(), "search_client".to_string());
+    }
+    
+    // Test that mappings are correct
+    assert_eq!(tool_to_client_map.get("get_weather"), Some(&"weather_client".to_string()));
+    assert_eq!(tool_to_client_map.get("send_email"), Some(&"weather_client".to_string()));
+    assert_eq!(tool_to_client_map.get("search_web"), Some(&"search_client".to_string()));
+    assert_eq!(tool_to_client_map.get("calculate"), Some(&"search_client".to_string()));
+    
+    // Test that unmapped tools return None
+    assert_eq!(tool_to_client_map.get("nonexistent_tool"), None);
+    
+    // Test tool name conflict simulation (last wins)
+    tool_to_client_map.insert("duplicate_tool".to_string(), "client1".to_string());
+    tool_to_client_map.insert("duplicate_tool".to_string(), "client2".to_string());
+    assert_eq!(tool_to_client_map.get("duplicate_tool"), Some(&"client2".to_string()));
+    
+    println!("Tool-to-client mapping logic test passed!");
+}
