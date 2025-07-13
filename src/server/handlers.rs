@@ -41,7 +41,7 @@ pub async fn inference(
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
-                    error: format!("Processing error: {}", e),
+                    error: format!("Processing error: {e}"),
                 }),
             ))
         }

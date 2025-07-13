@@ -1,8 +1,8 @@
 pub mod handlers;
 mod types;
 
-use crate::{agent::Agent, config::Config, history::HistoryStorage, Result};
-use axum::{routing::post, Router};
+use crate::{Result, agent::Agent, config::Config, history::HistoryStorage};
+use axum::{Router, routing::post};
 use std::{net::SocketAddr, sync::Arc};
 use tokio::sync::Mutex;
 use tracing::info;

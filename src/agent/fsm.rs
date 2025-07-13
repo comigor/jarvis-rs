@@ -1,7 +1,7 @@
 use crate::{
+    Error, Result,
     llm::{ChatCompletionResponse, ChatMessage, Tool},
     mcp::{McpToolCallRequest, McpToolCallResponse},
-    Error, Result,
 };
 use std::collections::HashMap;
 use tracing::{debug, info, warn};
@@ -236,10 +236,10 @@ impl AgentStateMachine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::llm::{ChatMessage, Function, Tool};
+    use crate::mcp::McpContent;
     use pretty_assertions::assert_eq;
     use std::collections::HashMap;
-    use crate::llm::{ChatMessage, Tool, Function};
-    use crate::mcp::McpContent;
 
     fn create_test_fsm() -> AgentStateMachine {
         let messages = vec![ChatMessage {
@@ -249,7 +249,7 @@ mod tests {
             tool_call_id: None,
             name: None,
         }];
-        
+
         let tools = vec![Tool {
             tool_type: "function".to_string(),
             function: Function {
@@ -258,9 +258,9 @@ mod tests {
                 parameters: serde_json::json!({}),
             },
         }];
-        
+
         let mcp_clients = HashMap::new();
-        
+
         AgentStateMachine::new(messages, tools, mcp_clients)
     }
 
@@ -283,11 +283,15 @@ mod tests {
         assert_eq!(*fsm.current_state(), AgentState::ReadyToCallLlm);
 
         // ProcessInput: ReadyToCallLlm -> AwaitingLlmResponse
-        fsm.process_event(AgentEvent::ProcessInput, None).await.unwrap();
+        fsm.process_event(AgentEvent::ProcessInput, None)
+            .await
+            .unwrap();
         assert_eq!(*fsm.current_state(), AgentState::AwaitingLlmResponse);
 
         // LlmRespondedWithContent: AwaitingLlmResponse -> Done
-        fsm.process_event(AgentEvent::LlmRespondedWithContent, None).await.unwrap();
+        fsm.process_event(AgentEvent::LlmRespondedWithContent, None)
+            .await
+            .unwrap();
         assert_eq!(*fsm.current_state(), AgentState::Done);
         assert!(fsm.is_terminal());
     }
@@ -297,15 +301,21 @@ mod tests {
         let mut fsm = create_test_fsm();
 
         // ReadyToCallLlm -> AwaitingLlmResponse
-        fsm.process_event(AgentEvent::ProcessInput, None).await.unwrap();
+        fsm.process_event(AgentEvent::ProcessInput, None)
+            .await
+            .unwrap();
         assert_eq!(*fsm.current_state(), AgentState::AwaitingLlmResponse);
 
         // AwaitingLlmResponse -> ExecutingTools
-        fsm.process_event(AgentEvent::LlmRequestedTools, None).await.unwrap();
+        fsm.process_event(AgentEvent::LlmRequestedTools, None)
+            .await
+            .unwrap();
         assert_eq!(*fsm.current_state(), AgentState::ExecutingTools);
 
         // ExecutingTools -> ReadyToCallLlm
-        fsm.process_event(AgentEvent::ToolsExecutionCompleted, None).await.unwrap();
+        fsm.process_event(AgentEvent::ToolsExecutionCompleted, None)
+            .await
+            .unwrap();
         assert_eq!(*fsm.current_state(), AgentState::ReadyToCallLlm);
     }
 
@@ -314,26 +324,38 @@ mod tests {
         let mut fsm = create_test_fsm();
 
         // Error from ReadyToCallLlm
-        fsm.process_event(AgentEvent::ErrorOccurred, None).await.unwrap();
+        fsm.process_event(AgentEvent::ErrorOccurred, None)
+            .await
+            .unwrap();
         assert_eq!(*fsm.current_state(), AgentState::Error);
         assert!(fsm.is_terminal());
 
         // Reset for next test
         let mut fsm = create_test_fsm();
-        fsm.process_event(AgentEvent::ProcessInput, None).await.unwrap();
+        fsm.process_event(AgentEvent::ProcessInput, None)
+            .await
+            .unwrap();
 
         // Error from AwaitingLlmResponse
-        fsm.process_event(AgentEvent::ErrorOccurred, None).await.unwrap();
+        fsm.process_event(AgentEvent::ErrorOccurred, None)
+            .await
+            .unwrap();
         assert_eq!(*fsm.current_state(), AgentState::Error);
         assert!(fsm.is_terminal());
 
         // Reset for next test
         let mut fsm = create_test_fsm();
-        fsm.process_event(AgentEvent::ProcessInput, None).await.unwrap();
-        fsm.process_event(AgentEvent::LlmRequestedTools, None).await.unwrap();
+        fsm.process_event(AgentEvent::ProcessInput, None)
+            .await
+            .unwrap();
+        fsm.process_event(AgentEvent::LlmRequestedTools, None)
+            .await
+            .unwrap();
 
         // Error from ExecutingTools
-        fsm.process_event(AgentEvent::ErrorOccurred, None).await.unwrap();
+        fsm.process_event(AgentEvent::ErrorOccurred, None)
+            .await
+            .unwrap();
         assert_eq!(*fsm.current_state(), AgentState::Error);
         assert!(fsm.is_terminal());
     }
@@ -343,22 +365,43 @@ mod tests {
         let mut fsm = create_test_fsm();
 
         // Invalid: LlmRespondedWithContent from ReadyToCallLlm
-        let result = fsm.process_event(AgentEvent::LlmRespondedWithContent, None).await;
+        let result = fsm
+            .process_event(AgentEvent::LlmRespondedWithContent, None)
+            .await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Invalid transition"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Invalid transition")
+        );
 
         // Invalid: ToolsExecutionCompleted from ReadyToCallLlm
-        let result = fsm.process_event(AgentEvent::ToolsExecutionCompleted, None).await;
+        let result = fsm
+            .process_event(AgentEvent::ToolsExecutionCompleted, None)
+            .await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Invalid transition"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Invalid transition")
+        );
 
         // Move to AwaitingLlmResponse
-        fsm.process_event(AgentEvent::ProcessInput, None).await.unwrap();
+        fsm.process_event(AgentEvent::ProcessInput, None)
+            .await
+            .unwrap();
 
         // Invalid: ProcessInput from AwaitingLlmResponse
         let result = fsm.process_event(AgentEvent::ProcessInput, None).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Invalid transition"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Invalid transition")
+        );
     }
 
     #[test]

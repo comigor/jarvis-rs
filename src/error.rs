@@ -81,15 +81,15 @@ impl Clone for Error {
             },
             Self::Internal(s) => Self::Internal(s.clone()),
             // For errors that can't be cloned, convert to string representation
-            Self::Database(e) => Self::Internal(format!("Database error: {}", e)),
-            Self::Http(e) => Self::Internal(format!("HTTP error: {}", e)),
-            Self::Serialization(e) => Self::Internal(format!("Serialization error: {}", e)),
-            Self::Yaml(e) => Self::Internal(format!("YAML error: {}", e)),
-            Self::Io(e) => Self::Internal(format!("IO error: {}", e)),
-            Self::Network(e) => Self::Internal(format!("Network error: {}", e)),
-            Self::AddrParse(e) => Self::Internal(format!("Address parse error: {}", e)),
-            Self::Uuid(e) => Self::Internal(format!("UUID error: {}", e)),
-            Self::OpenAi(e) => Self::Internal(format!("OpenAI error: {}", e)),
+            Self::Database(e) => Self::Internal(format!("Database error: {e}")),
+            Self::Http(e) => Self::Internal(format!("HTTP error: {e}")),
+            Self::Serialization(e) => Self::Internal(format!("Serialization error: {e}")),
+            Self::Yaml(e) => Self::Internal(format!("YAML error: {e}")),
+            Self::Io(e) => Self::Internal(format!("IO error: {e}")),
+            Self::Network(e) => Self::Internal(format!("Network error: {e}")),
+            Self::AddrParse(e) => Self::Internal(format!("Address parse error: {e}")),
+            Self::Uuid(e) => Self::Internal(format!("UUID error: {e}")),
+            Self::OpenAi(e) => Self::Internal(format!("OpenAI error: {e}")),
         }
     }
 }
@@ -124,7 +124,10 @@ mod tests {
     #[test]
     fn test_error_construction() {
         let config_err = Error::config("Invalid config");
-        assert_eq!(config_err.to_string(), "Configuration error: Invalid config");
+        assert_eq!(
+            config_err.to_string(),
+            "Configuration error: Invalid config"
+        );
 
         let llm_err = Error::llm("LLM failed");
         assert_eq!(llm_err.to_string(), "LLM error: LLM failed");
@@ -136,7 +139,10 @@ mod tests {
         assert_eq!(fsm_err.to_string(), "FSM error: Invalid state transition");
 
         let internal_err = Error::internal("Internal server error");
-        assert_eq!(internal_err.to_string(), "Internal error: Internal server error");
+        assert_eq!(
+            internal_err.to_string(),
+            "Internal error: Internal server error"
+        );
     }
 
     #[test]
@@ -161,7 +167,10 @@ mod tests {
         let session_not_found = Error::SessionNotFound {
             session_id: "session-123".to_string(),
         };
-        assert_eq!(session_not_found.to_string(), "Session not found: session-123");
+        assert_eq!(
+            session_not_found.to_string(),
+            "Session not found: session-123"
+        );
     }
 
     #[test]
@@ -172,7 +181,8 @@ mod tests {
         assert!(jarvis_error.to_string().contains("IO error"));
 
         // Test serde_json::Error conversion
-        let json_error: serde_json::Error = serde_json::from_str::<serde_json::Value>("invalid json").unwrap_err();
+        let json_error: serde_json::Error =
+            serde_json::from_str::<serde_json::Value>("invalid json").unwrap_err();
         let jarvis_error: Error = json_error.into();
         assert!(jarvis_error.to_string().contains("Serialization error"));
 
@@ -206,7 +216,7 @@ mod tests {
         let io_error = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "Access denied");
         let jarvis_error: Error = io_error.into();
         let cloned = jarvis_error.clone();
-        
+
         // Should be converted to Internal error with string representation
         assert!(cloned.to_string().contains("Internal error"));
         assert!(cloned.to_string().contains("IO error"));

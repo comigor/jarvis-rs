@@ -1,12 +1,16 @@
 use async_trait::async_trait;
 use jarvis_rust::{
-    llm::{ChatCompletionRequest, ChatCompletionResponse, LlmClient, ChatMessage, ToolCall, Choice, FunctionCall},
-    mcp::{
-        McpClient, McpInitializeRequest, McpInitializeResponse, McpServerInfo, McpServerCapabilities,
-        McpTool, McpToolCallRequest, McpToolCallResponse, McpContent, McpPrompt,
-        McpGetPromptRequest, McpGetPromptResponse, McpPromptMessage, McpPromptsCapability, McpToolsCapability,
-    },
     Error, Result,
+    llm::{
+        ChatCompletionRequest, ChatCompletionResponse, ChatMessage, Choice, FunctionCall,
+        LlmClient, ToolCall,
+    },
+    mcp::{
+        McpClient, McpContent, McpGetPromptRequest, McpGetPromptResponse, McpInitializeRequest,
+        McpInitializeResponse, McpPrompt, McpPromptMessage, McpPromptsCapability,
+        McpServerCapabilities, McpServerInfo, McpTool, McpToolCallRequest, McpToolCallResponse,
+        McpToolsCapability,
+    },
 };
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -49,9 +53,12 @@ impl MockLlmClient {
 
 #[async_trait]
 impl LlmClient for MockLlmClient {
-    async fn create_chat_completion(&self, request: ChatCompletionRequest) -> Result<ChatCompletionResponse> {
+    async fn create_chat_completion(
+        &self,
+        request: ChatCompletionRequest,
+    ) -> Result<ChatCompletionResponse> {
         self.requests.lock().unwrap().push(request);
-        
+
         if let Some(ref error) = self.error {
             return Err(Error::llm(error.clone()));
         }
@@ -98,7 +105,10 @@ impl MockMcpClient {
     }
 
     pub fn with_tool_response(self, tool_name: String, response: McpToolCallResponse) -> Self {
-        self.tool_responses.lock().unwrap().insert(tool_name, response);
+        self.tool_responses
+            .lock()
+            .unwrap()
+            .insert(tool_name, response);
         self
     }
 
@@ -115,7 +125,10 @@ impl MockMcpClient {
 
 #[async_trait]
 impl McpClient for MockMcpClient {
-    async fn initialize(&mut self, _request: McpInitializeRequest) -> Result<McpInitializeResponse> {
+    async fn initialize(
+        &mut self,
+        _request: McpInitializeRequest,
+    ) -> Result<McpInitializeResponse> {
         if let Some(ref error) = self.initialize_error {
             return Err(Error::mcp(error.clone()));
         }
@@ -125,9 +138,21 @@ impl McpClient for MockMcpClient {
         Ok(McpInitializeResponse {
             protocol_version: "2024-11-05".to_string(),
             capabilities: McpServerCapabilities {
-                prompts: if prompts.is_empty() { None } else { Some(McpPromptsCapability { list_changed: false }) },
+                prompts: if prompts.is_empty() {
+                    None
+                } else {
+                    Some(McpPromptsCapability {
+                        list_changed: false,
+                    })
+                },
                 resources: None,
-                tools: if tools.is_empty() { None } else { Some(McpToolsCapability { list_changed: false }) },
+                tools: if tools.is_empty() {
+                    None
+                } else {
+                    Some(McpToolsCapability {
+                        list_changed: false,
+                    })
+                },
             },
             server_info: Some(McpServerInfo {
                 name: "mock-server".to_string(),
@@ -212,7 +237,10 @@ pub fn create_mock_chat_response(content: &str) -> ChatCompletionResponse {
     }
 }
 
-pub fn create_mock_chat_response_with_tool_calls(content: &str, tool_calls: Vec<ToolCall>) -> ChatCompletionResponse {
+pub fn create_mock_chat_response_with_tool_calls(
+    content: &str,
+    tool_calls: Vec<ToolCall>,
+) -> ChatCompletionResponse {
     ChatCompletionResponse {
         id: "test-id".to_string(),
         object: "chat.completion".to_string(),

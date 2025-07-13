@@ -1,24 +1,26 @@
 use jarvis_rust::{
-    config::{McpServerConfig, McpClientType},
-    mcp::{
-        McpClient, McpInitializeRequest, McpClientCapabilities, McpRootsCapability,
-        McpToolCallRequest, McpToolCallResponse, McpContent, McpTool,
-        McpGetPromptRequest, McpPrompt, McpPromptArgument,
-    },
     Error,
+    config::{McpClientType, McpServerConfig},
+    mcp::{
+        McpClient, McpClientCapabilities, McpContent, McpGetPromptRequest, McpInitializeRequest,
+        McpPrompt, McpPromptArgument, McpRootsCapability, McpTool, McpToolCallRequest,
+        McpToolCallResponse,
+    },
 };
 use pretty_assertions::assert_eq;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use tokio;
 
 mod common;
-use common::{MockMcpClient, create_mock_mcp_tool, create_mock_tool_response, create_mock_tool_error_response};
+use common::{
+    MockMcpClient, create_mock_mcp_tool, create_mock_tool_error_response, create_mock_tool_response,
+};
 
 #[tokio::test]
 async fn test_mcp_client_initialization() {
     let mut mock_client = MockMcpClient::new();
-    
+
     let init_request = McpInitializeRequest {
         capabilities: McpClientCapabilities {
             roots: Some(McpRootsCapability {
@@ -39,8 +41,8 @@ async fn test_mcp_client_initialization() {
 
 #[tokio::test]
 async fn test_mcp_client_initialization_failure() {
-    let mut mock_client = MockMcpClient::new()
-        .with_initialize_error("Initialization failed".to_string());
+    let mut mock_client =
+        MockMcpClient::new().with_initialize_error("Initialization failed".to_string());
 
     let init_request = McpInitializeRequest {
         capabilities: McpClientCapabilities {
@@ -53,7 +55,12 @@ async fn test_mcp_client_initialization_failure() {
 
     let result = mock_client.initialize(init_request).await;
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("Initialization failed"));
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("Initialization failed")
+    );
 }
 
 #[tokio::test]
@@ -67,25 +74,33 @@ async fn test_mcp_tool_discovery() {
     let mock_client = MockMcpClient::new().with_tools(tools.clone());
 
     let discovered_tools = mock_client.list_tools().await.unwrap();
-    
+
     assert_eq!(discovered_tools.len(), 3);
     assert_eq!(discovered_tools[0].name, "get_weather");
     assert_eq!(discovered_tools[1].name, "send_email");
     assert_eq!(discovered_tools[2].name, "create_file");
 
     // Verify tool descriptions
-    assert_eq!(discovered_tools[0].description, "Get current weather for a location");
-    assert_eq!(discovered_tools[1].description, "Send an email to a recipient");
-    assert_eq!(discovered_tools[2].description, "Create a new file with content");
+    assert_eq!(
+        discovered_tools[0].description,
+        "Get current weather for a location"
+    );
+    assert_eq!(
+        discovered_tools[1].description,
+        "Send an email to a recipient"
+    );
+    assert_eq!(
+        discovered_tools[2].description,
+        "Create a new file with content"
+    );
 }
 
 #[tokio::test]
 async fn test_mcp_tool_execution_success() {
-    let mock_client = MockMcpClient::new()
-        .with_tool_response(
-            "get_weather".to_string(),
-            create_mock_tool_response("Current weather in London: Sunny, 22°C")
-        );
+    let mock_client = MockMcpClient::new().with_tool_response(
+        "get_weather".to_string(),
+        create_mock_tool_response("Current weather in London: Sunny, 22°C"),
+    );
 
     let tool_request = McpToolCallRequest {
         name: "get_weather".to_string(),
@@ -97,10 +112,10 @@ async fn test_mcp_tool_execution_success() {
     };
 
     let response = mock_client.call_tool(tool_request).await.unwrap();
-    
+
     assert!(!response.is_error);
     assert_eq!(response.content.len(), 1);
-    
+
     if let McpContent::Text { text } = &response.content[0] {
         assert_eq!(text, "Current weather in London: Sunny, 22°C");
     } else {
@@ -110,8 +125,10 @@ async fn test_mcp_tool_execution_success() {
 
 #[tokio::test]
 async fn test_mcp_tool_execution_failure() {
-    let mock_client = MockMcpClient::new()
-        .with_tool_error("broken_tool".to_string(), "Tool execution failed".to_string());
+    let mock_client = MockMcpClient::new().with_tool_error(
+        "broken_tool".to_string(),
+        "Tool execution failed".to_string(),
+    );
 
     let tool_request = McpToolCallRequest {
         name: "broken_tool".to_string(),
@@ -120,31 +137,44 @@ async fn test_mcp_tool_execution_failure() {
 
     let result = mock_client.call_tool(tool_request).await;
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("Tool execution failed"));
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("Tool execution failed")
+    );
 }
 
 #[tokio::test]
 async fn test_mcp_tool_execution_with_complex_arguments() {
-    let mock_client = MockMcpClient::new()
-        .with_tool_response(
-            "send_email".to_string(),
-            create_mock_tool_response("Email sent successfully to john@example.com")
-        );
+    let mock_client = MockMcpClient::new().with_tool_response(
+        "send_email".to_string(),
+        create_mock_tool_response("Email sent successfully to john@example.com"),
+    );
 
     let tool_request = McpToolCallRequest {
         name: "send_email".to_string(),
         arguments: {
             let mut args = HashMap::new();
-            args.insert("to".to_string(), Value::String("john@example.com".to_string()));
-            args.insert("subject".to_string(), Value::String("Test Subject".to_string()));
-            args.insert("body".to_string(), Value::String("Hello, this is a test email.".to_string()));
+            args.insert(
+                "to".to_string(),
+                Value::String("john@example.com".to_string()),
+            );
+            args.insert(
+                "subject".to_string(),
+                Value::String("Test Subject".to_string()),
+            );
+            args.insert(
+                "body".to_string(),
+                Value::String("Hello, this is a test email.".to_string()),
+            );
             args.insert("priority".to_string(), Value::String("high".to_string()));
             args
         },
     };
 
     let response = mock_client.call_tool(tool_request).await.unwrap();
-    
+
     assert!(!response.is_error);
     if let McpContent::Text { text } = &response.content[0] {
         assert!(text.contains("john@example.com"));
@@ -163,7 +193,7 @@ async fn test_mcp_tool_not_found() {
 
     // The default mock client should handle unknown tools gracefully
     let response = mock_client.call_tool(tool_request).await.unwrap();
-    
+
     assert!(!response.is_error);
     if let McpContent::Text { text } = &response.content[0] {
         assert!(text.contains("Mock response for tool: nonexistent_tool"));
@@ -193,14 +223,14 @@ async fn test_mcp_prompt_discovery() {
     *mock_client.prompts.lock().unwrap() = prompts.clone();
 
     let discovered_prompts = mock_client.list_prompts().await.unwrap();
-    
+
     assert_eq!(discovered_prompts.len(), 2);
     assert_eq!(discovered_prompts[0].name, "system_prompt");
     assert_eq!(discovered_prompts[1].name, "user_prompt");
-    
+
     // Check system prompt (no arguments)
     assert!(discovered_prompts[0].arguments.is_empty());
-    
+
     // Check user prompt (has arguments)
     assert_eq!(discovered_prompts[1].arguments.len(), 1);
     assert_eq!(discovered_prompts[1].arguments[0].name, "user_name");
@@ -217,11 +247,11 @@ async fn test_mcp_prompt_retrieval() {
     };
 
     let response = mock_client.get_prompt(prompt_request).await.unwrap();
-    
+
     assert_eq!(response.description, "Mock prompt".to_string());
     assert_eq!(response.messages.len(), 1);
     assert_eq!(response.messages[0].role, "assistant");
-    
+
     if let McpContent::Text { text } = &response.messages[0].content {
         assert_eq!(text, "Mock prompt content");
     }
@@ -230,9 +260,7 @@ async fn test_mcp_prompt_retrieval() {
 #[tokio::test]
 async fn test_mcp_client_capabilities() {
     let capabilities = McpClientCapabilities {
-        roots: Some(McpRootsCapability {
-            list_changed: true,
-        }),
+        roots: Some(McpRootsCapability { list_changed: true }),
         sampling: None,
     };
 
@@ -259,7 +287,7 @@ async fn test_mcp_content_types() {
     // Test content serialization
     let serialized = serde_json::to_string(&text_content).unwrap();
     let deserialized: McpContent = serde_json::from_str(&serialized).unwrap();
-    
+
     if let McpContent::Text { text } = deserialized {
         assert_eq!(text, "This is a text response");
     }
@@ -268,10 +296,10 @@ async fn test_mcp_content_types() {
 #[tokio::test]
 async fn test_mcp_error_response() {
     let error_response = create_mock_tool_error_response("Network timeout occurred");
-    
+
     assert!(error_response.is_error);
     assert_eq!(error_response.content.len(), 1);
-    
+
     if let McpContent::Text { text } = &error_response.content[0] {
         assert_eq!(text, "Network timeout occurred");
     }
@@ -280,12 +308,12 @@ async fn test_mcp_error_response() {
 #[tokio::test]
 async fn test_mcp_tool_schema_validation() {
     let tool = create_mock_mcp_tool("calculate", "Perform mathematical calculations");
-    
+
     // Verify the tool has the expected structure
     assert_eq!(tool.name, "calculate");
     assert_eq!(tool.description, "Perform mathematical calculations");
     assert!(tool.input_schema.is_object());
-    
+
     // Verify the schema contains expected properties
     let schema = &tool.input_schema;
     assert_eq!(schema["type"], "object");
@@ -298,11 +326,11 @@ async fn test_concurrent_mcp_tool_calls() {
     let mock_client = MockMcpClient::new()
         .with_tool_response(
             "fast_tool".to_string(),
-            create_mock_tool_response("Fast response")
+            create_mock_tool_response("Fast response"),
         )
         .with_tool_response(
             "slow_tool".to_string(),
-            create_mock_tool_response("Slow response")
+            create_mock_tool_response("Slow response"),
         );
 
     let client = std::sync::Arc::new(tokio::sync::Mutex::new(mock_client));
@@ -395,9 +423,15 @@ async fn test_mcp_server_config_types() {
     };
 
     assert_eq!(http_config.name, "http-server");
-    assert!(matches!(http_config.client_type, McpClientType::StreamableHttp));
+    assert!(matches!(
+        http_config.client_type,
+        McpClientType::StreamableHttp
+    ));
     assert!(http_config.url.is_some());
-    assert_eq!(http_config.headers.get("Authorization"), Some(&"Bearer token123".to_string()));
+    assert_eq!(
+        http_config.headers.get("Authorization"),
+        Some(&"Bearer token123".to_string())
+    );
 }
 
 #[tokio::test]

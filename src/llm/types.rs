@@ -90,7 +90,7 @@ impl ChatMessage {
                     ))
                     .build()
                     .map_err(|e| {
-                        crate::Error::llm(format!("Failed to build system message: {}", e))
+                        crate::Error::llm(format!("Failed to build system message: {e}"))
                     })?;
                 Ok(msg.into())
             }
@@ -102,9 +102,9 @@ impl ChatMessage {
                 if let Some(ref name) = self.name {
                     builder.name(name);
                 }
-                let msg = builder.build().map_err(|e| {
-                    crate::Error::llm(format!("Failed to build user message: {}", e))
-                })?;
+                let msg = builder
+                    .build()
+                    .map_err(|e| crate::Error::llm(format!("Failed to build user message: {e}")))?;
                 Ok(msg.into())
             }
             "assistant" => {
@@ -130,7 +130,7 @@ impl ChatMessage {
                     builder.tool_calls(openai_tool_calls);
                 }
                 let msg = builder.build().map_err(|e| {
-                    crate::Error::llm(format!("Failed to build assistant message: {}", e))
+                    crate::Error::llm(format!("Failed to build assistant message: {e}"))
                 })?;
                 Ok(msg.into())
             }
@@ -141,9 +141,7 @@ impl ChatMessage {
                     ))
                     .tool_call_id(self.tool_call_id.as_ref().unwrap_or(&String::new()))
                     .build()
-                    .map_err(|e| {
-                        crate::Error::llm(format!("Failed to build tool message: {}", e))
-                    })?;
+                    .map_err(|e| crate::Error::llm(format!("Failed to build tool message: {e}")))?;
                 Ok(msg.into())
             }
             _ => Err(crate::Error::llm(format!(

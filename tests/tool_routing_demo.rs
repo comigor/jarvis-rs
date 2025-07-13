@@ -1,7 +1,7 @@
+use jarvis_rust::mcp::{McpContent, McpToolCallRequest, McpToolCallResponse};
 /// Demonstration test showing the tool routing functionality
 /// This test shows how the improved tool routing system works by testing the error messages
 use std::collections::HashMap;
-use jarvis_rust::mcp::{McpToolCallRequest, McpToolCallResponse, McpContent};
 
 /// Simulate the execute_mcp_tool logic for demonstration
 async fn simulate_tool_execution(
@@ -17,7 +17,10 @@ async fn simulate_tool_execution(
                     // Success case - tool found and client available
                     McpToolCallResponse {
                         content: vec![McpContent::Text {
-                            text: format!("Tool '{}' executed successfully on client '{}'", tool_call.name, client_name),
+                            text: format!(
+                                "Tool '{}' executed successfully on client '{}'",
+                                tool_call.name, client_name
+                            ),
                         }],
                         is_error: false,
                     }
@@ -43,7 +46,11 @@ async fn simulate_tool_execution(
                     text: format!(
                         "Error: No client mapping found for tool: '{}'. Available tools: {}",
                         tool_call.name,
-                        tool_to_client_map.keys().cloned().collect::<Vec<_>>().join(", ")
+                        tool_to_client_map
+                            .keys()
+                            .cloned()
+                            .collect::<Vec<_>>()
+                            .join(", ")
                     ),
                 }],
                 is_error: true,
@@ -61,8 +68,14 @@ async fn test_tool_routing_functionality() {
     tool_to_client_map.insert("search_web".to_string(), "search_client".to_string());
 
     let mut mcp_clients = HashMap::new();
-    mcp_clients.insert("weather_client".to_string(), "Weather service client".to_string());
-    mcp_clients.insert("email_client".to_string(), "Email service client".to_string());
+    mcp_clients.insert(
+        "weather_client".to_string(),
+        "Weather service client".to_string(),
+    );
+    mcp_clients.insert(
+        "email_client".to_string(),
+        "Email service client".to_string(),
+    );
     mcp_clients.insert("search_client".to_string(), "Web search client".to_string());
 
     // Test 1: Successful tool execution
@@ -70,11 +83,13 @@ async fn test_tool_routing_functionality() {
         name: "get_weather".to_string(),
         arguments: HashMap::new(),
     };
-    
+
     let response = simulate_tool_execution(&tool_to_client_map, &mcp_clients, &tool_call).await;
     assert!(!response.is_error);
     if let McpContent::Text { text } = &response.content[0] {
-        assert!(text.contains("Tool 'get_weather' executed successfully on client 'weather_client'"));
+        assert!(
+            text.contains("Tool 'get_weather' executed successfully on client 'weather_client'")
+        );
     }
 
     // Test 2: Tool not mapped to any client
@@ -82,7 +97,7 @@ async fn test_tool_routing_functionality() {
         name: "unknown_tool".to_string(),
         arguments: HashMap::new(),
     };
-    
+
     let response = simulate_tool_execution(&tool_to_client_map, &mcp_clients, &unknown_tool).await;
     assert!(response.is_error);
     if let McpContent::Text { text } = &response.content[0] {
@@ -96,16 +111,19 @@ async fn test_tool_routing_functionality() {
     // Test 3: Tool mapped but client no longer available
     let mut clients_missing = mcp_clients.clone();
     clients_missing.remove("email_client"); // Remove email client
-    
+
     let email_tool = McpToolCallRequest {
         name: "send_email".to_string(),
         arguments: HashMap::new(),
     };
-    
-    let response = simulate_tool_execution(&tool_to_client_map, &clients_missing, &email_tool).await;
+
+    let response =
+        simulate_tool_execution(&tool_to_client_map, &clients_missing, &email_tool).await;
     assert!(response.is_error);
     if let McpContent::Text { text } = &response.content[0] {
-        assert!(text.contains("Client 'email_client' for tool 'send_email' is no longer available"));
+        assert!(
+            text.contains("Client 'email_client' for tool 'send_email' is no longer available")
+        );
     }
 
     println!("✅ All tool routing scenarios tested successfully!");
@@ -115,13 +133,16 @@ async fn test_tool_routing_functionality() {
 #[tokio::test]
 async fn test_tool_conflict_handling() {
     let mut tool_to_client_map = HashMap::new();
-    
+
     // Simulate tool discovery where two clients provide the same tool
     tool_to_client_map.insert("duplicate_tool".to_string(), "client1".to_string());
     tool_to_client_map.insert("duplicate_tool".to_string(), "client2".to_string()); // Last wins
-    
+
     // Verify that the last client wins
-    assert_eq!(tool_to_client_map.get("duplicate_tool"), Some(&"client2".to_string()));
-    
+    assert_eq!(
+        tool_to_client_map.get("duplicate_tool"),
+        Some(&"client2".to_string())
+    );
+
     println!("✅ Tool conflict handling verified - last client wins!");
 }

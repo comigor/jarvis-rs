@@ -1,18 +1,18 @@
 use crate::{
+    Error, Result,
     config::McpServerConfig,
     mcp::{McpContent, McpToolCallRequest, McpToolCallResponse},
-    Error, Result,
 };
 use async_trait::async_trait;
 use reqwest::header::HeaderMap;
 use rmcp::{
+    RoleClient,
     model::{CallToolRequestParam, ClientCapabilities, ClientInfo, Implementation},
     service::{RunningService, ServiceExt},
     transport::{
-        sse_client::SseClientConfig, streamable_http_client::StreamableHttpClientTransportConfig,
         ConfigureCommandExt, SseClientTransport, StreamableHttpClientTransport, TokioChildProcess,
+        sse_client::SseClientConfig, streamable_http_client::StreamableHttpClientTransportConfig,
     },
-    RoleClient,
 };
 use tokio::process::Command;
 use tracing::{debug, info, warn};
@@ -86,7 +86,7 @@ impl RmcpClient {
         let peer = client_info
             .serve(transport)
             .await
-            .map_err(|e| Error::mcp(format!("Failed to create rmcp service: {}", e)))?;
+            .map_err(|e| Error::mcp(format!("Failed to create rmcp service: {e}")))?;
 
         info!("Successfully created rmcp service for: {}", self.name);
 
@@ -109,24 +109,24 @@ impl RmcpClient {
             // Simple case without headers
             SseClientTransport::start(url.clone())
                 .await
-                .map_err(|e| Error::mcp(format!("Failed to create SSE transport: {}", e)))?
+                .map_err(|e| Error::mcp(format!("Failed to create SSE transport: {e}")))?
         } else {
             // Custom client with headers
             let mut headers = HeaderMap::new();
             for (key, value) in &self.config.headers {
                 let header_name: reqwest::header::HeaderName = key
                     .parse()
-                    .map_err(|e| Error::config(format!("Invalid header name '{}': {}", key, e)))?;
-                let header_value: reqwest::header::HeaderValue = value.parse().map_err(|e| {
-                    Error::config(format!("Invalid header value for '{}': {}", key, e))
-                })?;
+                    .map_err(|e| Error::config(format!("Invalid header name '{key}': {e}")))?;
+                let header_value: reqwest::header::HeaderValue = value
+                    .parse()
+                    .map_err(|e| Error::config(format!("Invalid header value for '{key}': {e}")))?;
                 headers.insert(header_name, header_value);
             }
 
             let client = reqwest::Client::builder()
                 .default_headers(headers)
                 .build()
-                .map_err(|e| Error::mcp(format!("Failed to create HTTP client: {}", e)))?;
+                .map_err(|e| Error::mcp(format!("Failed to create HTTP client: {e}")))?;
 
             SseClientTransport::start_with_client(
                 client,
@@ -136,7 +136,7 @@ impl RmcpClient {
                 },
             )
             .await
-            .map_err(|e| Error::mcp(format!("Failed to create SSE transport: {}", e)))?
+            .map_err(|e| Error::mcp(format!("Failed to create SSE transport: {e}")))?
         };
 
         // Create client info for MCP protocol compliance
@@ -152,7 +152,7 @@ impl RmcpClient {
         let peer = client_info
             .serve(transport)
             .await
-            .map_err(|e| Error::mcp(format!("Failed to serve SSE rmcp service: {}", e)))?;
+            .map_err(|e| Error::mcp(format!("Failed to serve SSE rmcp service: {e}")))?;
 
         info!("Successfully created SSE rmcp service for: {}", self.name);
 
@@ -176,17 +176,17 @@ impl RmcpClient {
         for (key, value) in &self.config.headers {
             let header_name: reqwest::header::HeaderName = key
                 .parse()
-                .map_err(|e| Error::config(format!("Invalid header name '{}': {}", key, e)))?;
+                .map_err(|e| Error::config(format!("Invalid header name '{key}': {e}")))?;
             let header_value: reqwest::header::HeaderValue = value
                 .parse()
-                .map_err(|e| Error::config(format!("Invalid header value for '{}': {}", key, e)))?;
+                .map_err(|e| Error::config(format!("Invalid header value for '{key}': {e}")))?;
             headers.insert(header_name, header_value);
         }
 
         let client = reqwest::Client::builder()
             .default_headers(headers)
             .build()
-            .map_err(|e| Error::mcp(format!("Failed to create HTTP client: {}", e)))?;
+            .map_err(|e| Error::mcp(format!("Failed to create HTTP client: {e}")))?;
 
         // Use with_client instead of from_uri to support custom headers
         let transport = StreamableHttpClientTransport::with_client(
@@ -207,7 +207,7 @@ impl RmcpClient {
         let peer = client_info
             .serve(transport)
             .await
-            .map_err(|e| Error::mcp(format!("Failed to serve HTTP rmcp service: {}", e)))?;
+            .map_err(|e| Error::mcp(format!("Failed to serve HTTP rmcp service: {e}")))?;
 
         info!("Successfully created HTTP rmcp service for: {}", self.name);
 
@@ -273,7 +273,7 @@ impl crate::mcp::McpClient for RmcpClient {
                 }
                 Err(e) => {
                     warn!("Failed to list tools from rmcp peer {}: {}", self.name, e);
-                    Err(Error::mcp(format!("Failed to list tools: {}", e)))
+                    Err(Error::mcp(format!("Failed to list tools: {e}")))
                 }
             }
         } else {
@@ -315,10 +315,55 @@ impl crate::mcp::McpClient for RmcpClient {
                         .content
                         .into_iter()
                         .map(|content_item| {
-                            // For now, convert all content to text format
-                            // TODO: Handle different content types properly
-                            McpContent::Text {
-                                text: format!("{:?}", content_item),
+                            // Handle different content types properly based on rmcp types
+                            // Note: The rmcp crate uses a generic Content type that we need to match on
+                            // For now, we extract the text representation until we can determine the exact type structure
+                            match serde_json::to_value(&content_item) {
+                                Ok(value) => {
+                                    // Try to extract as text content first
+                                    if let Some(text) = value.get("text").and_then(|v| v.as_str()) {
+                                        McpContent::Text {
+                                            text: text.to_string(),
+                                        }
+                                    } else if value.get("data").is_some()
+                                        && value.get("mimeType").is_some()
+                                    {
+                                        // Handle image content
+                                        let data = value["data"].as_str().unwrap_or("").to_string();
+                                        let mime_type =
+                                            value["mimeType"].as_str().unwrap_or("").to_string();
+                                        McpContent::Image { data, mime_type }
+                                    } else if value.get("uri").is_some() {
+                                        // Handle resource content
+                                        let uri = value["uri"].as_str().unwrap_or("").to_string();
+                                        let text = value
+                                            .get("text")
+                                            .and_then(|v| v.as_str())
+                                            .map(|s| s.to_string());
+                                        let blob = value
+                                            .get("blob")
+                                            .and_then(|v| v.as_str())
+                                            .map(|s| s.to_string());
+                                        McpContent::Resource {
+                                            resource: crate::mcp::McpResourceContent {
+                                                uri,
+                                                text,
+                                                blob,
+                                            },
+                                        }
+                                    } else {
+                                        // Fallback to text representation
+                                        McpContent::Text {
+                                            text: value.to_string(),
+                                        }
+                                    }
+                                }
+                                Err(_) => {
+                                    // Final fallback to debug representation
+                                    McpContent::Text {
+                                        text: format!("{content_item:?}"),
+                                    }
+                                }
                             }
                         })
                         .collect();
@@ -333,7 +378,7 @@ impl crate::mcp::McpClient for RmcpClient {
                         "Failed to call tool {} via rmcp peer {}: {}",
                         request.name, self.name, e
                     );
-                    Err(Error::mcp(format!("Tool call failed: {}", e)))
+                    Err(Error::mcp(format!("Tool call failed: {e}")))
                 }
             }
         } else {
@@ -378,7 +423,7 @@ impl crate::mcp::McpClient for RmcpClient {
                 }
                 Err(e) => {
                     warn!("Failed to list prompts from rmcp peer {}: {}", self.name, e);
-                    Err(Error::mcp(format!("Failed to list prompts: {}", e)))
+                    Err(Error::mcp(format!("Failed to list prompts: {e}")))
                 }
             }
         } else {
@@ -454,7 +499,7 @@ impl crate::mcp::McpClient for RmcpClient {
                         "Failed to get prompt '{}' via rmcp peer {}: {}",
                         request.name, self.name, e
                     );
-                    Err(Error::mcp(format!("Get prompt failed: {}", e)))
+                    Err(Error::mcp(format!("Get prompt failed: {e}")))
                 }
             }
         } else {

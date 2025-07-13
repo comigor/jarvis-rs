@@ -1,13 +1,13 @@
 use super::fsm::{AgentEvent, AgentState, AgentStateMachine};
 use crate::{
+    Error, Result,
     config::{LlmConfig, McpServerConfig},
     history::{HistoryStorage, Message},
     llm::{ChatMessage, Function, LlmClient, OpenAiClient, Tool},
     mcp::{
-        create_mcp_client, McpClient, McpClientCapabilities, McpInitializeRequest,
-        McpRootsCapability,
+        McpClient, McpClientCapabilities, McpInitializeRequest, McpRootsCapability,
+        create_mcp_client,
     },
-    Error, Result,
 };
 use std::collections::HashMap;
 use tracing::{debug, error, info, warn};
@@ -41,7 +41,7 @@ impl Agent {
                     // Store tools and create tool-to-client mapping
                     for tool in tools {
                         let tool_name = tool.name.clone();
-                        
+
                         // Check for tool name conflicts
                         if let Some(existing_client) = tool_to_client_map.get(&tool_name) {
                             warn!(
@@ -49,10 +49,10 @@ impl Agent {
                                 tool_name, existing_client, name, name
                             );
                         }
-                        
+
                         // Map tool name to client name
                         tool_to_client_map.insert(tool_name.clone(), name.clone());
-                        
+
                         let llm_tool = Tool {
                             tool_type: "function".to_string(),
                             function: Function {
@@ -356,7 +356,9 @@ impl Agent {
                                 debug!("🔧 LLM requested {} tool calls", tool_calls.len());
 
                                 // Add the LLM's assistant message with tool_calls to conversation
-                                debug!("📝 Adding LLM assistant message with tool_calls to conversation");
+                                debug!(
+                                    "📝 Adding LLM assistant message with tool_calls to conversation"
+                                );
                                 fsm.context.messages.push(ChatMessage {
                                     role: "assistant".to_string(),
                                     content: choice.message.content.clone(),
@@ -501,7 +503,7 @@ impl Agent {
                                     .cloned()
                                     .unwrap_or_else(|| {
                                         warn!("Missing tool call ID mapping for index {}", index);
-                                        format!("tool_call_{}", index)
+                                        format!("tool_call_{index}")
                                     });
 
                                 debug!("📝 Adding tool result for tool_call_id: {}", tool_call_id);
@@ -582,6 +584,13 @@ impl Agent {
         prompt_parts.join("\n\n")
     }
 
+    pub async fn execute_mcp_tool_for_testing(
+        &mut self,
+        tool_call: &crate::mcp::McpToolCallRequest,
+    ) -> crate::mcp::McpToolCallResponse {
+        self.execute_mcp_tool(tool_call).await
+    }
+
     async fn execute_mcp_tool(
         &mut self,
         tool_call: &crate::mcp::McpToolCallRequest,
@@ -591,16 +600,24 @@ impl Agent {
         // Find the appropriate MCP client using the tool-to-client mapping
         match self.tool_to_client_map.get(&tool_call.name) {
             Some(client_name) => {
-                debug!("Tool '{}' mapped to client '{}'", tool_call.name, client_name);
-                
+                debug!(
+                    "Tool '{}' mapped to client '{}'",
+                    tool_call.name, client_name
+                );
+
                 match self.mcp_clients.get_mut(client_name) {
                     Some(client) => {
-                        debug!("Executing tool '{}' on client '{}'", tool_call.name, client_name);
+                        debug!(
+                            "Executing tool '{}' on client '{}'",
+                            tool_call.name, client_name
+                        );
                         match client.call_tool(tool_call.clone()).await {
                             Ok(response) => {
                                 debug!(
                                     "Tool '{}' executed successfully on client '{}' with {} content items",
-                                    tool_call.name, client_name, response.content.len()
+                                    tool_call.name,
+                                    client_name,
+                                    response.content.len()
                                 );
                                 response
                             }
@@ -611,7 +628,7 @@ impl Agent {
                                 );
                                 crate::mcp::McpToolCallResponse {
                                     content: vec![crate::mcp::McpContent::Text {
-                                        text: format!("Error: Tool execution failed: {}", e),
+                                        text: format!("Error: Tool execution failed: {e}"),
                                     }],
                                     is_error: true,
                                 }
@@ -646,12 +663,50 @@ impl Agent {
                         text: format!(
                             "Error: No client mapping found for tool: '{}'. Available tools: {}",
                             tool_call.name,
-                            self.tool_to_client_map.keys().cloned().collect::<Vec<_>>().join(", ")
+                            self.tool_to_client_map
+                                .keys()
+                                .cloned()
+                                .collect::<Vec<_>>()
+                                .join(", ")
                         ),
                     }],
                     is_error: true,
                 }
             }
         }
+    }
+
+    // Test-specific methods for enabling proper testing
+    pub fn new_for_testing(
+        llm_client: Box<dyn LlmClient>,
+        mcp_clients: HashMap<String, Box<dyn McpClient>>,
+        tool_to_client_map: HashMap<String, String>,
+        available_tools: Vec<Tool>,
+    ) -> Self {
+        Self {
+            llm_client,
+            mcp_clients,
+            available_tools,
+            tool_to_client_map,
+            discovered_prompts: Vec::new(),
+            default_system_prompt: "You are a helpful assistant.".to_string(),
+            base_system_prompt: None,
+        }
+    }
+
+    pub fn get_tool_to_client_map(&self) -> &HashMap<String, String> {
+        &self.tool_to_client_map
+    }
+
+    pub fn get_available_tools(&self) -> &Vec<Tool> {
+        &self.available_tools
+    }
+
+    pub fn get_mcp_clients(&self) -> &HashMap<String, Box<dyn McpClient>> {
+        &self.mcp_clients
+    }
+
+    pub fn remove_mcp_client(&mut self, client_name: &str) -> Option<Box<dyn McpClient>> {
+        self.mcp_clients.remove(client_name)
     }
 }

@@ -21,8 +21,8 @@ pub async fn load() -> Result<Config> {
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
-    use tempfile::NamedTempFile;
     use std::io::Write;
+    use tempfile::NamedTempFile;
 
     const SAMPLE_CONFIG: &str = r#"
 llm:
@@ -72,8 +72,10 @@ server:
     async fn test_load_valid_config() {
         let mut temp_file = NamedTempFile::new().unwrap();
         temp_file.write_all(SAMPLE_CONFIG.as_bytes()).unwrap();
-        
-        unsafe { env::set_var("CONFIG_PATH", temp_file.path().to_str().unwrap()); }
+
+        unsafe {
+            env::set_var("CONFIG_PATH", temp_file.path().to_str().unwrap());
+        }
 
         let config = load().await.unwrap();
 
@@ -82,7 +84,10 @@ server:
         assert_eq!(config.llm.base_url, "https://api.openai.com");
         assert_eq!(config.llm.api_key, "test-key");
         assert_eq!(config.llm.model, "gpt-4");
-        assert_eq!(config.llm.system_prompt, Some("You are a helpful assistant".to_string()));
+        assert_eq!(
+            config.llm.system_prompt,
+            Some("You are a helpful assistant".to_string())
+        );
 
         // Test server config
         assert_eq!(config.server.host, "127.0.0.1");
@@ -92,11 +97,14 @@ server:
 
         // Test MCP servers
         assert_eq!(config.mcp_servers.len(), 2);
-        
+
         let weather_server = &config.mcp_servers[0];
         assert_eq!(weather_server.name, "weather");
         assert!(matches!(weather_server.client_type, McpClientType::Sse));
-        assert_eq!(weather_server.url, Some("http://localhost:3000".to_string()));
+        assert_eq!(
+            weather_server.url,
+            Some("http://localhost:3000".to_string())
+        );
 
         let file_server = &config.mcp_servers[1];
         assert_eq!(file_server.name, "file_manager");
@@ -105,15 +113,19 @@ server:
         assert_eq!(file_server.args, vec!["--verbose"]);
         assert_eq!(file_server.env.get("DEBUG"), Some(&"true".to_string()));
 
-        unsafe { env::remove_var("CONFIG_PATH"); }
+        unsafe {
+            env::remove_var("CONFIG_PATH");
+        }
     }
 
     #[tokio::test]
     async fn test_load_minimal_config_with_defaults() {
         let mut temp_file = NamedTempFile::new().unwrap();
         temp_file.write_all(MINIMAL_CONFIG.as_bytes()).unwrap();
-        
-        unsafe { env::set_var("CONFIG_PATH", temp_file.path().to_str().unwrap()); }
+
+        unsafe {
+            env::set_var("CONFIG_PATH", temp_file.path().to_str().unwrap());
+        }
 
         let config = load().await.unwrap();
 
@@ -126,49 +138,63 @@ server:
         assert_eq!(config.llm.system_prompt, None); // default
         assert!(config.mcp_servers.is_empty()); // default
 
-        unsafe { env::remove_var("CONFIG_PATH"); }
+        unsafe {
+            env::remove_var("CONFIG_PATH");
+        }
     }
 
     #[tokio::test]
     async fn test_load_missing_config_file() {
-        unsafe { env::set_var("CONFIG_PATH", "/nonexistent/config.yaml"); }
+        unsafe {
+            env::set_var("CONFIG_PATH", "/nonexistent/config.yaml");
+        }
 
         let result = load().await;
         assert!(result.is_err());
-        
+
         let error = result.unwrap_err();
         assert!(error.to_string().contains("IO error"));
 
-        unsafe { env::remove_var("CONFIG_PATH"); }
+        unsafe {
+            env::remove_var("CONFIG_PATH");
+        }
     }
 
     #[tokio::test]
     async fn test_load_invalid_yaml() {
         let mut temp_file = NamedTempFile::new().unwrap();
         temp_file.write_all(b"invalid: yaml: content: [").unwrap();
-        
-        unsafe { env::set_var("CONFIG_PATH", temp_file.path().to_str().unwrap()); }
+
+        unsafe {
+            env::set_var("CONFIG_PATH", temp_file.path().to_str().unwrap());
+        }
 
         let result = load().await;
         assert!(result.is_err());
-        
+
         let error = result.unwrap_err();
         assert!(error.to_string().contains("YAML error"));
 
-        unsafe { env::remove_var("CONFIG_PATH"); }
+        unsafe {
+            env::remove_var("CONFIG_PATH");
+        }
     }
 
     #[tokio::test]
     async fn test_load_invalid_config_structure() {
         let mut temp_file = NamedTempFile::new().unwrap();
         temp_file.write_all(INVALID_CONFIG.as_bytes()).unwrap();
-        
-        unsafe { env::set_var("CONFIG_PATH", temp_file.path().to_str().unwrap()); }
+
+        unsafe {
+            env::set_var("CONFIG_PATH", temp_file.path().to_str().unwrap());
+        }
 
         let result = load().await;
         assert!(result.is_err());
 
-        unsafe { env::remove_var("CONFIG_PATH"); }
+        unsafe {
+            env::remove_var("CONFIG_PATH");
+        }
     }
 
     #[tokio::test]
@@ -220,7 +246,9 @@ server:
             "sse"
         );
         assert_eq!(
-            serde_yaml::to_string(&McpClientType::StreamableHttp).unwrap().trim(),
+            serde_yaml::to_string(&McpClientType::StreamableHttp)
+                .unwrap()
+                .trim(),
             "streamable_http"
         );
         assert_eq!(

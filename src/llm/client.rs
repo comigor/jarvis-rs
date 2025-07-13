@@ -1,6 +1,6 @@
 use super::types::*;
-use crate::{config::LlmConfig, Result};
-use async_openai::{config::OpenAIConfig, types as openai_types, Client};
+use crate::{Result, config::LlmConfig};
+use async_openai::{Client, config::OpenAIConfig, types as openai_types};
 use async_trait::async_trait;
 use tracing::debug;
 
@@ -115,7 +115,7 @@ impl LlmClient for OpenAiClient {
                 Choice {
                     index: choice.index,
                     message,
-                    finish_reason: choice.finish_reason.map(|fr| format!("{:?}", fr)),
+                    finish_reason: choice.finish_reason.map(|fr| format!("{fr:?}")),
                 }
             })
             .collect();
@@ -141,9 +141,9 @@ impl LlmClient for OpenAiClient {
 mod tests {
     use super::*;
     use crate::config::LlmConfig;
+    use async_openai::types::ChatCompletionRequestMessage;
     use pretty_assertions::assert_eq;
     use serde_json::json;
-    use async_openai::types::ChatCompletionRequestMessage;
 
     fn create_test_config() -> LlmConfig {
         LlmConfig {
@@ -159,7 +159,7 @@ mod tests {
     fn test_openai_client_creation() {
         let config = create_test_config();
         let client = OpenAiClient::new(config.clone());
-        
+
         assert_eq!(client.model, "gpt-4");
     }
 
@@ -167,7 +167,7 @@ mod tests {
     fn test_openai_client_with_custom_base_url() {
         let mut config = create_test_config();
         config.base_url = "https://custom.api.com".to_string();
-        
+
         let client = OpenAiClient::new(config);
         assert_eq!(client.model, "gpt-4");
     }
@@ -185,7 +185,10 @@ mod tests {
         let openai_msg = msg.to_openai_message().unwrap();
         // Verify it's a system message by attempting to extract content
         // Note: Actual verification depends on openai crate's internal structure
-        assert!(matches!(openai_msg, ChatCompletionRequestMessage::System(_)));
+        assert!(matches!(
+            openai_msg,
+            ChatCompletionRequestMessage::System(_)
+        ));
     }
 
     #[test]
@@ -213,7 +216,10 @@ mod tests {
         };
 
         let openai_msg = msg.to_openai_message().unwrap();
-        assert!(matches!(openai_msg, ChatCompletionRequestMessage::Assistant(_)));
+        assert!(matches!(
+            openai_msg,
+            ChatCompletionRequestMessage::Assistant(_)
+        ));
     }
 
     #[test]
@@ -236,7 +242,10 @@ mod tests {
         };
 
         let openai_msg = msg.to_openai_message().unwrap();
-        assert!(matches!(openai_msg, ChatCompletionRequestMessage::Assistant(_)));
+        assert!(matches!(
+            openai_msg,
+            ChatCompletionRequestMessage::Assistant(_)
+        ));
     }
 
     #[test]
@@ -265,7 +274,12 @@ mod tests {
 
         let result = msg.to_openai_message();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Unknown message role"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Unknown message role")
+        );
     }
 
     #[test]

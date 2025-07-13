@@ -99,7 +99,7 @@ impl HistoryStorage {
         let mut fallback = self
             .fallback
             .lock()
-            .map_err(|e| Error::internal(format!("Mutex lock failed: {}", e)))?;
+            .map_err(|e| Error::internal(format!("Mutex lock failed: {e}")))?;
         fallback.push(message);
         Ok(())
     }
@@ -137,7 +137,7 @@ impl HistoryStorage {
         while let Some(row) = rows.next().await? {
             let created_at_str: String = row.get(4)?;
             let created_at = chrono::DateTime::parse_from_rfc3339(&created_at_str)
-                .map_err(|e| Error::internal(format!("Failed to parse timestamp: {}", e)))?
+                .map_err(|e| Error::internal(format!("Failed to parse timestamp: {e}")))?
                 .with_timezone(&chrono::Utc);
 
             let message = Message {
@@ -157,7 +157,7 @@ impl HistoryStorage {
         let fallback = self
             .fallback
             .lock()
-            .map_err(|e| Error::internal(format!("Mutex lock failed: {}", e)))?;
+            .map_err(|e| Error::internal(format!("Mutex lock failed: {e}")))?;
 
         let messages: Vec<Message> = fallback
             .iter()
@@ -177,9 +177,9 @@ impl HistoryStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Utc;
     use pretty_assertions::assert_eq;
     use tempfile::TempDir;
-    use chrono::Utc;
 
     #[tokio::test]
     async fn test_in_memory_storage() {
@@ -225,7 +225,7 @@ mod tests {
 
         let retrieved_messages = storage.list(session_id).await.unwrap();
         assert_eq!(retrieved_messages.len(), 3);
-        
+
         for (i, msg) in retrieved_messages.iter().enumerate() {
             assert_eq!(msg.role, messages_to_save[i].role);
             assert_eq!(msg.content, messages_to_save[i].content);
@@ -247,7 +247,7 @@ mod tests {
 
         storage.save(msg.clone()).await.unwrap();
         let messages = storage.list(session_id).await.unwrap();
-        
+
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].content, "Test message");
         assert_eq!(messages[0].role, "user");
@@ -263,9 +263,27 @@ mod tests {
         let session2 = "session-2";
 
         // Add messages to different sessions
-        storage.save(Message::user(session1.to_string(), "Session 1 message 1".to_string())).await.unwrap();
-        storage.save(Message::user(session2.to_string(), "Session 2 message 1".to_string())).await.unwrap();
-        storage.save(Message::user(session1.to_string(), "Session 1 message 2".to_string())).await.unwrap();
+        storage
+            .save(Message::user(
+                session1.to_string(),
+                "Session 1 message 1".to_string(),
+            ))
+            .await
+            .unwrap();
+        storage
+            .save(Message::user(
+                session2.to_string(),
+                "Session 2 message 1".to_string(),
+            ))
+            .await
+            .unwrap();
+        storage
+            .save(Message::user(
+                session1.to_string(),
+                "Session 1 message 2".to_string(),
+            ))
+            .await
+            .unwrap();
 
         // Retrieve messages for each session
         let session1_messages = storage.list(session1).await.unwrap();
@@ -282,7 +300,7 @@ mod tests {
     #[tokio::test]
     async fn test_empty_session() {
         let storage = HistoryStorage::new(":memory:").await.unwrap();
-        
+
         let messages = storage.list("nonexistent-session").await.unwrap();
         assert!(messages.is_empty());
     }
@@ -321,7 +339,8 @@ mod tests {
         assert_eq!(user_msg.session_id, session_id);
         assert!(user_msg.id.is_none());
 
-        let assistant_msg = Message::assistant(session_id.clone(), "Assistant response".to_string());
+        let assistant_msg =
+            Message::assistant(session_id.clone(), "Assistant response".to_string());
         assert_eq!(assistant_msg.role, "assistant");
         assert_eq!(assistant_msg.content, "Assistant response");
 
@@ -337,7 +356,11 @@ mod tests {
     #[tokio::test]
     async fn test_message_timestamps() {
         let before = Utc::now();
-        let msg = Message::new("test".to_string(), "user".to_string(), "content".to_string());
+        let msg = Message::new(
+            "test".to_string(),
+            "user".to_string(),
+            "content".to_string(),
+        );
         let after = Utc::now();
 
         assert!(msg.created_at >= before && msg.created_at <= after);
@@ -398,7 +421,7 @@ mod tests {
         // Verify all messages were saved to fallback
         let messages = storage.list(session_id).await.unwrap();
         assert_eq!(messages.len(), 5);
-        
+
         // All messages should have no ID (fallback storage)
         for msg in &messages {
             assert!(msg.id.is_none());

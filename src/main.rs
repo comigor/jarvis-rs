@@ -21,7 +21,7 @@ async fn main() -> Result<()> {
     let config = match config::load().await {
         Ok(config) => config,
         Err(e) => {
-            eprintln!("Failed to load configuration: {}", e);
+            eprintln!("Failed to load configuration: {e}");
             std::process::exit(1);
         }
     };
@@ -31,7 +31,7 @@ async fn main() -> Result<()> {
 
     // Validate log level
     if let Err(e) = validate_log_level(&log_level) {
-        eprintln!("{}", e);
+        eprintln!("{e}");
         std::process::exit(1);
     }
 

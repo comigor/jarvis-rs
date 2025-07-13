@@ -1,8 +1,8 @@
 use jarvis_rust::{
-    config::{Config, LlmConfig, McpServerConfig, ServerConfig, LogsConfig},
+    Result,
+    config::{Config, LlmConfig, LogsConfig, McpServerConfig, ServerConfig},
     history::HistoryStorage,
     mcp::McpClientType,
-    Result,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -34,17 +34,15 @@ pub fn create_test_config() -> Config {
 /// Create a test configuration with MCP servers
 pub fn create_test_config_with_mcp() -> Config {
     let mut config = create_test_config();
-    config.mcp_servers = vec![
-        McpServerConfig {
-            name: "test-server".to_string(),
-            client_type: McpClientType::Http,
-            url: Some("http://localhost:3000".to_string()),
-            command: None,
-            args: Vec::new(),
-            env: HashMap::new(),
-            headers: HashMap::new(),
-        },
-    ];
+    config.mcp_servers = vec![McpServerConfig {
+        name: "test-server".to_string(),
+        client_type: McpClientType::Http,
+        url: Some("http://localhost:3000".to_string()),
+        command: None,
+        args: Vec::new(),
+        env: HashMap::new(),
+        headers: HashMap::new(),
+    }];
     config
 }
 
