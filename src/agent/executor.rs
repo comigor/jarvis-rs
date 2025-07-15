@@ -297,7 +297,19 @@ impl Agent {
                 fsm.current_state()
             );
 
-            if loop_iteration > 5 {
+            // Check if max turns exceeded (matches Go implementation maxTurns: 5)
+            if fsm.context.current_turn >= fsm.context.max_turns {
+                error!(
+                    "🚨 Maximum interaction turns exceeded ({}/{}), terminating to prevent infinite loop",
+                    fsm.context.current_turn, fsm.context.max_turns
+                );
+                fsm.context.last_error = Some("exceeded maximum interaction turns".to_string());
+                fsm.process_event(AgentEvent::ErrorOccurred, Some(self.llm_client.as_ref()))
+                    .await?;
+                break;
+            }
+
+            if loop_iteration > 15 {
                 error!(
                     "🚨 FSM loop iteration limit exceeded ({}), breaking to prevent infinite loop",
                     loop_iteration
@@ -332,6 +344,12 @@ impl Agent {
                                     llm_duration
                                 );
                                 fsm.context.llm_response = Some(response);
+                                // Increment turn counter (matches Go implementation)
+                                fsm.context.increment_turn();
+                                debug!(
+                                    "🔄 Turn incremented to {}/{}",
+                                    fsm.context.current_turn, fsm.context.max_turns
+                                );
                             }
                             Err(e) => {
                                 error!("❌ LLM call failed: {}", e);

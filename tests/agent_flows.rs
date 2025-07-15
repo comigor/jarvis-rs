@@ -338,15 +338,15 @@ async fn test_max_turns_prevention() {
 
     // Test initial state
     assert_eq!(context.current_turn, 0);
-    assert_eq!(context.max_turns, 10);
+    assert_eq!(context.max_turns, 5);
     assert!(!context.is_max_turns_reached());
 
     // Simulate reaching max turns
-    for _ in 0..10 {
+    for _ in 0..5 {
         context.increment_turn();
     }
 
-    assert_eq!(context.current_turn, 10);
+    assert_eq!(context.current_turn, 5);
     assert!(context.is_max_turns_reached());
 
     // Further increments should still be detected as over limit
