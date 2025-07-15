@@ -1,11 +1,23 @@
 {
   "permissions": {
     "allow": [
-      "Bash(go mod tidy)",
-      "Bash(go list -m -f '{{.Dir}}' *)",
-      "Bash(make vet)",
-      "Bash(make test)",
-      "Bash(make build)"
+      "Bash(cargo:*)",
+      "Bash(cat:*)",
+      "Bash(go:*)",
+      "Bash(grep:*)",
+      "Bash(make:*)",
+      "Bash(rustup:*)",
+      "Bash(timeout:*)",
+      "Bash(true)",
+      "WebFetch(domain:crates.io)",
+      "WebFetch(domain:docs.rs)",
+      "WebFetch(domain:gist.github.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:hackmd.io)",
+      "Bash(mkdir:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(rustc:*)"
     ],
     "deny": []
   }

@@ -1,0 +1,57 @@
+[package]
+name = "jarvis-rust"
+version = "0.1.0"
+edition = "2024"
+authors = ["Igor <igor@example.com>"]
+description = "Smart-home agent server written in Rust"
+rust-version = "1.88"
+
+[[bin]]
+name = "jarvis"
+path = "src/main.rs"
+
+[dependencies]
+# Web server
+axum = "0.7"
+tokio = { version = "1.0", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+
+# Database (libSQL - SQLite fork by Turso)
+libsql = "0.4"
+
+# Configuration
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1.0"
+
+# LLM Client
+async-openai = "0.29"
+reqwest = { version = "0.12", features = ["json", "stream"] }
+
+# FSM
+rust-fsm = "0.7"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+
+# Utilities
+uuid = { version = "1.0", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1.0"
+thiserror = "1.0"
+async-trait = "0.1"
+
+# MCP Protocol support - using official rmcp crate
+rmcp = { version = "0.2.0", features = ["server", "client", "transport-child-process", "transport-sse-client", "transport-streamable-http-client", "reqwest"] }
+
+[dev-dependencies]
+tempfile = "3.0"
+mockall = "0.12"
+tokio-test = "0.4"
+wiremock = "0.6"
+pretty_assertions = "1.4"
+rstest = "0.19"
+test-log = "0.2"
+axum-test = "14.0"

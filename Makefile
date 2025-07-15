@@ -1,15 +1,20 @@
+.PHONY: build run test lint
 
-.PHONY: build run
-
+# Build the Rust binary
 build:
-	go build -o bin/jarvis ./cmd/jarvis
+	cargo build --release
+	mkdir -p bin
+	cp target/release/jarvis bin/jarvis
 
+# Run the application in development mode
 run:
-	go run ./cmd/jarvis
+	cargo run
 
+# Run all tests
 test:
-	go test ./...
+	cargo test
 
+# Run linting and formatting checks
 lint:
-	go vet ./...
-	gofmt -w .
+	cargo clippy -- -D warnings
+	cargo fmt --check
