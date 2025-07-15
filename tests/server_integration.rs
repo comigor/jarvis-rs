@@ -2,7 +2,6 @@ use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode},
-    response::Response,
 };
 use jarvis_rust::{
     config::{Config, LlmConfig, LogsConfig, ServerConfig},
@@ -344,13 +343,6 @@ async fn test_concurrent_requests() {
 }
 
 // Test helper functions
-
-async fn extract_response_body(response: Response<Body>) -> String {
-    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    String::from_utf8(body_bytes.to_vec()).unwrap()
-}
 
 #[tokio::test]
 async fn test_response_structure() {

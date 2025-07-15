@@ -1,13 +1,8 @@
 use jarvis_rust::{
-    Error,
-    agent::Agent,
-    config::{LlmConfig, McpServerConfig},
+    config::LlmConfig,
     history::HistoryStorage,
-    llm::{
-        ChatCompletionChoice, ChatCompletionResponse, ChatMessage, Function as LlmFunction,
-        ToolCall,
-    },
-    mcp::{McpClientType, McpContent, McpToolCallResponse},
+    llm::ChatMessage,
+    mcp::{McpContent, McpToolCallRequest, McpToolCallResponse},
 };
 use pretty_assertions::assert_eq;
 use std::collections::HashMap;
@@ -15,16 +10,13 @@ use tempfile::TempDir;
 use tokio;
 
 mod common;
-use common::{
-    MockLlmClient, MockMcpClient, create_mock_chat_response,
-    create_mock_chat_response_with_tool_calls, create_mock_tool_call, create_mock_tool_response,
-};
+use common::{MockLlmClient, create_mock_chat_response};
 
 /// Test the agent processing a simple request without tool calls
 #[tokio::test]
 async fn test_agent_direct_llm_response() {
     // Setup
-    let llm_config = LlmConfig {
+    let _llm_config = LlmConfig {
         provider: "openai".to_string(),
         base_url: "https://api.openai.com".to_string(),
         api_key: "test-key".to_string(),
@@ -32,10 +24,10 @@ async fn test_agent_direct_llm_response() {
         system_prompt: Some("You are helpful".to_string()),
     };
 
-    let mcp_configs: Vec<jarvis_rust::config::McpServerConfig> = vec![]; // No MCP servers
+    let _mcp_configs: Vec<jarvis_rust::config::McpServerConfig> = vec![]; // No MCP servers
 
     // Create a mock LLM client with a direct response
-    let mut mock_llm = MockLlmClient::new();
+    let mock_llm = MockLlmClient::new();
     mock_llm.add_response(create_mock_chat_response(
         "Hello! How can I help you today?",
     ));
@@ -77,7 +69,6 @@ async fn test_agent_direct_llm_response() {
 async fn test_agent_fsm_with_tool_calls() {
     use jarvis_rust::agent::fsm::{AgentEvent, AgentStateMachine};
     use jarvis_rust::llm::{Function, Tool};
-    use jarvis_rust::mcp::{McpContent, McpToolCallRequest, McpToolCallResponse};
 
     // Create FSM with tool capabilities
     let messages = vec![
@@ -286,8 +277,6 @@ async fn test_conversation_history_flow() {
 /// Test tool execution flow simulation
 #[tokio::test]
 async fn test_tool_execution_simulation() {
-    use jarvis_rust::mcp::{McpContent, McpToolCallRequest, McpToolCallResponse};
-
     // Simulate tool execution without actual MCP clients
     let tool_request = McpToolCallRequest {
         name: "get_weather".to_string(),
@@ -332,7 +321,7 @@ async fn test_tool_execution_simulation() {
 /// Test max turns exceeded scenario
 #[tokio::test]
 async fn test_max_turns_prevention() {
-    use jarvis_rust::agent::fsm::{AgentContext, AgentStateMachine};
+    use jarvis_rust::agent::fsm::AgentContext;
 
     let mut context = AgentContext::new(vec![], vec![], HashMap::new());
 

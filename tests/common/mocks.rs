@@ -1,10 +1,7 @@
 use async_trait::async_trait;
 use jarvis_rust::{
     Error, Result,
-    llm::{
-        ChatCompletionRequest, ChatCompletionResponse, ChatMessage, Choice, FunctionCall,
-        LlmClient, ToolCall,
-    },
+    llm::{ChatCompletionRequest, ChatCompletionResponse, ChatMessage, Choice, LlmClient},
     mcp::{
         McpClient, McpContent, McpGetPromptRequest, McpGetPromptResponse, McpInitializeRequest,
         McpInitializeResponse, McpPrompt, McpPromptMessage, McpPromptsCapability,
@@ -32,22 +29,8 @@ impl MockLlmClient {
         }
     }
 
-    pub fn with_responses(self, responses: Vec<ChatCompletionResponse>) -> Self {
-        *self.responses.lock().unwrap() = responses;
-        self
-    }
-
-    pub fn with_error(mut self, error: String) -> Self {
-        self.error = Some(error);
-        self
-    }
-
     pub fn add_response(&self, response: ChatCompletionResponse) {
         self.responses.lock().unwrap().push(response);
-    }
-
-    pub fn get_requests(&self) -> Vec<ChatCompletionRequest> {
-        self.requests.lock().unwrap().clone()
     }
 }
 
@@ -234,41 +217,6 @@ pub fn create_mock_chat_response(content: &str) -> ChatCompletionResponse {
             finish_reason: Some("stop".to_string()),
         }],
         usage: None,
-    }
-}
-
-pub fn create_mock_chat_response_with_tool_calls(
-    content: &str,
-    tool_calls: Vec<ToolCall>,
-) -> ChatCompletionResponse {
-    ChatCompletionResponse {
-        id: "test-id".to_string(),
-        object: "chat.completion".to_string(),
-        created: 0,
-        model: "test-model".to_string(),
-        choices: vec![Choice {
-            index: 0,
-            message: ChatMessage {
-                role: "assistant".to_string(),
-                content: content.to_string(),
-                tool_calls: Some(tool_calls),
-                tool_call_id: None,
-                name: None,
-            },
-            finish_reason: Some("tool_calls".to_string()),
-        }],
-        usage: None,
-    }
-}
-
-pub fn create_mock_tool_call(id: &str, function_name: &str, arguments: &str) -> ToolCall {
-    ToolCall {
-        id: id.to_string(),
-        call_type: "function".to_string(),
-        function: FunctionCall {
-            name: function_name.to_string(),
-            arguments: arguments.to_string(),
-        },
     }
 }
 

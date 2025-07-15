@@ -5,7 +5,7 @@ use jarvis_rust::{
     config::LlmConfig,
     history::HistoryStorage,
     llm::{
-        ChatCompletionChoice, ChatCompletionRequest, ChatCompletionResponse, ChatMessage,
+        ChatCompletionRequest, ChatCompletionResponse, ChatMessage, Choice,
         Function as LlmFunction, FunctionCall, LlmClient, Tool, ToolCall,
     },
     mcp::{McpContent, McpToolCallRequest, McpToolCallResponse},
@@ -33,15 +33,6 @@ impl MockLlmClient {
 
     fn add_response(&self, response: ChatCompletionResponse) {
         self.responses.lock().unwrap().push(response);
-    }
-
-    fn with_error(mut self, error: String) -> Self {
-        self.error = Some(error);
-        self
-    }
-
-    fn get_received_tools(&self) -> Vec<Tool> {
-        self.received_tools.lock().unwrap().clone()
     }
 }
 
@@ -75,7 +66,7 @@ fn create_direct_response(content: &str) -> ChatCompletionResponse {
         object: "chat.completion".to_string(),
         created: 1234567890,
         model: "gpt-4".to_string(),
-        choices: vec![ChatCompletionChoice {
+        choices: vec![Choice {
             message: ChatMessage {
                 role: "assistant".to_string(),
                 content: content.to_string(),
@@ -96,7 +87,7 @@ fn create_tool_request_response(tool_name: &str, tool_args: &str) -> ChatComplet
         object: "chat.completion".to_string(),
         created: 1234567890,
         model: "gpt-4".to_string(),
-        choices: vec![ChatCompletionChoice {
+        choices: vec![Choice {
             message: ChatMessage {
                 role: "assistant".to_string(),
                 content: "".to_string(),
@@ -505,11 +496,6 @@ impl MockMcpClient {
 
     fn with_tool_error(mut self, tool_name: String, error: String) -> Self {
         self.tool_errors.insert(tool_name, error);
-        self
-    }
-
-    fn with_initialize_error(mut self, error: String) -> Self {
-        self.initialize_error = Some(error);
         self
     }
 }

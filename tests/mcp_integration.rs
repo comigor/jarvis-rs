@@ -1,14 +1,12 @@
 use jarvis_rust::{
-    Error,
     config::{McpClientType, McpServerConfig},
     mcp::{
         McpClient, McpClientCapabilities, McpContent, McpGetPromptRequest, McpInitializeRequest,
-        McpPrompt, McpPromptArgument, McpRootsCapability, McpTool, McpToolCallRequest,
-        McpToolCallResponse,
+        McpPrompt, McpPromptArgument, McpRootsCapability, McpToolCallRequest,
     },
 };
 use pretty_assertions::assert_eq;
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::collections::HashMap;
 use tokio;
 
